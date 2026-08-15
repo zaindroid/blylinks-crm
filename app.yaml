@@ -1,0 +1,7 @@
+name: blylinks-crm
+memory_mb: 512
+port: 4000
+domains:
+  - blylinks-crm.example.com
+dependencies:
+  - postgres

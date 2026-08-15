@@ -1,0 +1,49 @@
+{
+  "openapi": "3.0.0",
+  "info": { "title": "Blylinks CRM API", "version": "1.0.0" },
+  "paths": {
+    "/api/auth/login": { "post": { "summary": "Log in", "responses": { "200": { "description": "OK" } } } },
+    "/api/auth/register": { "post": { "summary": "Register a new agent", "responses": { "201": { "description": "Created" } } } },
+    "/api/users": { "get": { "summary": "List users", "responses": { "200": { "description": "OK" } } } },
+    "/api/campaigns": {
+      "get": { "summary": "List campaigns", "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Create campaign (Admin)", "responses": { "201": { "description": "Created" } } }
+    },
+    "/api/campaigns/{id}": { "patch": { "summary": "Update campaign (Admin)", "responses": { "200": { "description": "OK" } } } },
+    "/api/campaigns/{id}/toggle-status": { "patch": { "summary": "Toggle campaign active status (Admin)", "responses": { "200": { "description": "OK" } } } },
+    "/api/sales": {
+      "get": { "summary": "List sales", "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Submit a sale (Agent)", "responses": { "201": { "description": "Created" } } }
+    },
+    "/api/sales/{id}/approve": { "patch": { "summary": "Approve sale (Admin/Supervisor)", "responses": { "200": { "description": "OK" } } } },
+    "/api/sales/{id}/reject": { "patch": { "summary": "Reject sale (Admin/Supervisor)", "responses": { "200": { "description": "OK" } } } },
+    "/api/attendance": { "get": { "summary": "List attendance logs", "responses": { "200": { "description": "OK" } } } },
+    "/api/attendance/clock-in": { "post": { "summary": "Clock in", "responses": { "201": { "description": "Created" } } } },
+    "/api/attendance/clock-out": { "post": { "summary": "Clock out", "responses": { "200": { "description": "OK" } } } },
+    "/api/attendance/{id}": { "patch": { "summary": "Update attendance status (Admin/Supervisor)", "responses": { "200": { "description": "OK" } } } },
+    "/api/targets": { "get": { "summary": "List targets", "responses": { "200": { "description": "OK" } } } },
+    "/api/targets/{agentId}": { "patch": { "summary": "Update agent targets (Admin)", "responses": { "200": { "description": "OK" } } } },
+    "/api/callbacks": {
+      "get": { "summary": "List callbacks", "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Schedule callback", "responses": { "201": { "description": "Created" } } }
+    },
+    "/api/callbacks/{id}/complete": { "patch": { "summary": "Complete callback", "responses": { "200": { "description": "OK" } } } },
+    "/api/leads": {
+      "get": { "summary": "List leads", "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Create lead", "responses": { "201": { "description": "Created" } } }
+    },
+    "/api/leads/{id}/status": { "patch": { "summary": "Update lead status", "responses": { "200": { "description": "OK" } } } },
+    "/api/payroll": { "get": { "summary": "List payroll records", "responses": { "200": { "description": "OK" } } } },
+    "/api/payroll/{id}/toggle-payment": { "patch": { "summary": "Toggle payroll payment status (Admin)", "responses": { "200": { "description": "OK" } } } },
+    "/api/messages": {
+      "get": { "summary": "List/poll messages by channel", "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Send a message", "responses": { "201": { "description": "Created" } } }
+    },
+    "/api/kb-articles": { "get": { "summary": "List knowledge base articles", "responses": { "200": { "description": "OK" } } } },
+    "/api/tickets": {
+      "get": { "summary": "List support tickets", "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Create support ticket", "responses": { "201": { "description": "Created" } } }
+    },
+    "/api/tickets/{id}/resolve": { "patch": { "summary": "Resolve ticket (Admin/Supervisor)", "responses": { "200": { "description": "OK" } } } }
+  }
+}
