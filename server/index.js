@@ -1,10 +1,12 @@
 const config = require('./config');
 const logger = require('./logger');
 const migrate = require('./db/migrate');
+const seed = require('./db/seed');
 const buildApp = require('./app');
 
 async function main() {
   await migrate();
+  await seed();
 
   const app = buildApp();
   app.listen(config.port, () => {
