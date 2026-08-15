@@ -31,9 +31,9 @@ router.post('/login', asyncHandler(async (req, res) => {
 }));
 
 router.post('/register', asyncHandler(async (req, res) => {
-  const { name, email, password, phone, cnic, shift } = req.body;
-  if (!name || !email || !password || !phone) {
-    return res.status(400).json({ error: 'name, email, password and phone are required' });
+  const { name, email, password } = req.body;
+  if (!name || !email || !password) {
+    return res.status(400).json({ error: 'name, email and password are required' });
   }
 
   const existing = await findUserRowByEmail(email);
@@ -49,12 +49,11 @@ router.post('/register', asyncHandler(async (req, res) => {
   const id = `${isFirstUser ? 'usr_admin' : 'usr_agent'}_${Date.now()}`;
   const passwordHash = await bcrypt.hash(password, 10);
   await pool.query(
-    `INSERT INTO users (id, name, email, password_hash, role, designation, phone, cnic, status, avatar, shift)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Active',$9,$10)`,
+    `INSERT INTO users (id, name, email, password_hash, role, designation, status, avatar)
+     VALUES ($1,$2,$3,$4,$5,$6,'Active',$7)`,
     [
-      id, name, email, passwordHash, role, designation, phone, cnic || 'N/A',
-      'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-      shift || '08:00 AM - 04:00 PM'
+      id, name, email, passwordHash, role, designation,
+      'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'
     ]
   );
 

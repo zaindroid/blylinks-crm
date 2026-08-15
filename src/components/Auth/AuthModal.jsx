@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Mail, Lock, Phone, CreditCard, Clock, CheckCircle, ArrowRight, X } from 'lucide-react';
+import { User, Mail, Lock, CheckCircle, ArrowRight, X } from 'lucide-react';
 import { login, register } from '../../api/auth';
 
 const LOGO_SRC = '/blylinks-logo.png';
@@ -14,10 +14,7 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
   const [regData, setRegData] = useState({
     name: '',
     email: '',
-    password: '',
-    phone: '',
-    cnic: '',
-    shift: '08:00 AM - 04:00 PM'
+    password: ''
   });
 
   const [error, setError] = useState('');
@@ -41,8 +38,8 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
 
   const handleRegisterSubmit = async (e) => {
     e.preventDefault();
-    if (!regData.name || !regData.email || !regData.password || !regData.phone) {
-      setError('Please fill in all required onboarding fields.');
+    if (!regData.name || !regData.email || !regData.password) {
+      setError('Please fill in all required fields.');
       return;
     }
     setError('');
@@ -143,43 +140,6 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
                     required
                   />
                 </div>
-              </div>
-
-              <div className="grid-2">
-                <div className="form-group">
-                  <label className="form-label flex-align"><Phone size={13} /> Phone (+92) *</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="+92 300 0000000"
-                    value={regData.phone}
-                    onChange={e => setRegData({...regData, phone: e.target.value})}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label flex-align"><CreditCard size={13} /> CNIC / National ID</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    placeholder="42101-0000000-0"
-                    value={regData.cnic}
-                    onChange={e => setRegData({...regData, cnic: e.target.value})}
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label className="form-label flex-align"><Clock size={13} /> Preferred Shift</label>
-                <select
-                  className="form-select"
-                  value={regData.shift}
-                  onChange={e => setRegData({...regData, shift: e.target.value})}
-                >
-                  <option value="08:00 AM - 04:00 PM">Morning Shift (08:00 AM - 04:00 PM)</option>
-                  <option value="04:00 PM - 12:00 AM">Evening Shift (04:00 PM - 12:00 AM)</option>
-                  <option value="09:00 PM - 05:00 AM">Night Shift (09:00 PM - 05:00 AM)</option>
-                </select>
               </div>
 
               <button type="submit" className="btn btn-primary btn-block margin-bottom" disabled={submitting}>
