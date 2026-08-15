@@ -48,8 +48,14 @@ function buildApp() {
   app.use('/api/admin', requireAuth, adminRoutes);
 
   const distDir = path.join(__dirname, '..', 'dist');
-  app.use(express.static(distDir));
+  // Vite's built JS/CSS filenames are content-hashed, so they're safe to cache
+  // forever -- a new deploy always produces new filenames. index.html is the
+  // opposite: it must NEVER be cached, since it's the only thing that points
+  // at the current hashes. Caching it causes browsers to keep loading a
+  // deploy's old JS bundle indefinitely against the new API.
+  app.use(express.static(distDir, { index: false, maxAge: '1y', immutable: true }));
   app.get(/^(?!\/api).*/, (req, res) => {
+    res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.sendFile(path.join(distDir, 'index.html'));
   });
 
