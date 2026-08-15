@@ -41,28 +41,22 @@ router.post('/register', asyncHandler(async (req, res) => {
     return res.status(409).json({ error: 'An account with this email already exists' });
   }
 
-  const id = `usr_agent_${Date.now()}`;
+  const { rows: userCountRows } = await pool.query('SELECT COUNT(*)::int AS count FROM users');
+  const isFirstUser = userCountRows[0].count === 0;
+  const role = isFirstUser ? 'Admin' : 'Agent';
+  const designation = isFirstUser ? 'Administrator' : 'Outbound Agent';
+
+  const id = `${isFirstUser ? 'usr_admin' : 'usr_agent'}_${Date.now()}`;
   const passwordHash = await bcrypt.hash(password, 10);
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await client.query(
-      `INSERT INTO users (id, name, email, password_hash, role, designation, phone, cnic, status, avatar, shift)
-       VALUES ($1,$2,$3,$4,'Agent','Outbound Agent',$5,$6,'Active',$7,$8)`,
-      [
-        id, name, email, passwordHash, phone, cnic || 'N/A',
-        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
-        shift || '08:00 AM - 04:00 PM'
-      ]
-    );
-    await client.query('INSERT INTO campaign_agents (campaign_id, agent_id) VALUES ($1,$2)', ['camp_1', id]);
-    await client.query('COMMIT');
-  } catch (err) {
-    await client.query('ROLLBACK');
-    throw err;
-  } finally {
-    client.release();
-  }
+  await pool.query(
+    `INSERT INTO users (id, name, email, password_hash, role, designation, phone, cnic, status, avatar, shift)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Active',$9,$10)`,
+    [
+      id, name, email, passwordHash, role, designation, phone, cnic || 'N/A',
+      'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
+      shift || '08:00 AM - 04:00 PM'
+    ]
+  );
 
   const row = await findUserRowByEmail(email);
   const token = issueToken(row);

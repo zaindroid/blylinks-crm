@@ -20,6 +20,7 @@ const payrollRoutes = require('./routes/payroll.routes');
 const messagesRoutes = require('./routes/messages.routes');
 const kbRoutes = require('./routes/kb.routes');
 const ticketsRoutes = require('./routes/tickets.routes');
+const adminRoutes = require('./routes/admin.routes');
 
 function buildApp() {
   const app = express();
@@ -44,6 +45,7 @@ function buildApp() {
   app.use('/api/messages', requireAuth, messagesRoutes);
   app.use('/api/kb-articles', requireAuth, kbRoutes);
   app.use('/api/tickets', requireAuth, ticketsRoutes);
+  app.use('/api/admin', requireAuth, adminRoutes);
 
   const distDir = path.join(__dirname, '..', 'dist');
   app.use(express.static(distDir));

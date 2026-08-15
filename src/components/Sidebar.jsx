@@ -13,10 +13,11 @@ import {
   LifeBuoy,
   FileText,
   UserCheck,
-  ShieldCheck,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
+
+const LOGO_SRC = '/blylinks-logo.png';
 
 function getNavSections(role, pendingQaCount) {
   const sections = [
@@ -78,7 +79,7 @@ export default function Sidebar({ currentRole, activeTab, setActiveTab, pendingQ
       <div className="sidebar-brand-row">
         <div className="sidebar-brand">
           <div className="sidebar-brand-mark">
-            <ShieldCheck size={17} />
+            <img src={LOGO_SRC} alt="Blylinks" className="sidebar-brand-logo" />
           </div>
           {!collapsed && (
             <div className="sidebar-brand-text">
@@ -139,11 +140,11 @@ export default function Sidebar({ currentRole, activeTab, setActiveTab, pendingQ
         .sidebar-brand-row { padding: 0.35rem 0.4rem 1rem 0.4rem; }
         .sidebar-brand { display: flex; align-items: center; gap: 0.65rem; }
         .sidebar-brand-mark {
-          width: 32px; height: 32px; border-radius: var(--radius-sm);
-          background: linear-gradient(145deg, #6366f1, #4338ca);
-          color: #fff; display: flex; align-items: center; justify-content: center;
+          width: 32px; height: 32px;
+          display: flex; align-items: center; justify-content: center;
           flex-shrink: 0;
         }
+        .sidebar-brand-logo { width: 100%; height: 100%; object-fit: contain; }
         .sidebar-brand-text { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
         .sidebar-brand-name { font-family: var(--font-display); font-weight: 700; font-size: 0.95rem; color: #ffffff; white-space: nowrap; }
         .sidebar-brand-sub { font-size: 0.65rem; color: var(--sidebar-text-muted); white-space: nowrap; }

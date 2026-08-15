@@ -44,6 +44,7 @@
       "get": { "summary": "List support tickets", "responses": { "200": { "description": "OK" } } },
       "post": { "summary": "Create support ticket", "responses": { "201": { "description": "Created" } } }
     },
-    "/api/tickets/{id}/resolve": { "patch": { "summary": "Resolve ticket (Admin/Supervisor)", "responses": { "200": { "description": "OK" } } } }
+    "/api/tickets/{id}/resolve": { "patch": { "summary": "Resolve ticket (Admin/Supervisor)", "responses": { "200": { "description": "OK" } } } },
+    "/api/admin/reset-data": { "post": { "summary": "Wipe all business data, keeping schema intact (Admin)", "responses": { "200": { "description": "OK" } } } }
   }
 }

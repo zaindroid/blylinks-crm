@@ -1,12 +1,8 @@
 import React, { useState } from 'react';
-import { Shield, User, Mail, Lock, Phone, CreditCard, Clock, CheckCircle, ArrowRight, X } from 'lucide-react';
+import { User, Mail, Lock, Phone, CreditCard, Clock, CheckCircle, ArrowRight, X } from 'lucide-react';
 import { login, register } from '../../api/auth';
 
-const DEMO_ACCOUNTS = [
-  { label: 'Zain (Admin)', email: 'admin@blylinks.com', password: 'admin' },
-  { label: 'Emma Watson (Supervisor)', email: 'supervisor@blylinks.com', password: 'supervisor' },
-  { label: 'Sarah Jenkins (Agent)', email: 'sarah@blylinks.com', password: 'agent' }
-];
+const LOGO_SRC = '/blylinks-logo.png';
 
 export default function AuthModal({ isOpen, onClose, onAuthenticated, closable = true }) {
   const [mode, setMode] = useState('login'); // 'login' or 'register'
@@ -62,27 +58,13 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
     }
   };
 
-  const handleQuickLogin = async (demo) => {
-    setError('');
-    setSubmitting(true);
-    try {
-      const user = await login(demo.email, demo.password);
-      onAuthenticated(user);
-      onClose();
-    } catch (err) {
-      setError(err.message || 'Demo login failed.');
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
   return (
     <div className="modal-overlay">
       <div className="modal-content" style={{ maxWidth: '460px' }}>
         <div className="modal-header">
           <div className="flex-align">
-            <Shield size={20} className="text-blue" />
-            <span className="modal-title">Blylinks Portal — {mode === 'login' ? 'Account Login' : 'Agent Onboarding'}</span>
+            <img src={LOGO_SRC} alt="Blylinks" className="auth-modal-logo" />
+            <span className="modal-title">Blylinks Portal — {mode === 'login' ? 'Account Login' : 'Create Account'}</span>
           </div>
           {closable && <button className="icon-btn" onClick={onClose}><X size={18} /></button>}
         </div>
@@ -120,25 +102,8 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
                 Sign In To Portal <ArrowRight size={15} />
               </button>
 
-              <div className="demo-login-box margin-bottom">
-                <div className="demo-title">Quick Demo User Login:</div>
-                <div className="demo-pills-row">
-                  {DEMO_ACCOUNTS.map(u => (
-                    <button
-                      key={u.email}
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => handleQuickLogin(u)}
-                      disabled={submitting}
-                    >
-                      {u.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               <div className="auth-switch-text">
-                New Agent? <button type="button" className="text-btn font-bold" onClick={() => { setMode('register'); setError(''); }}>Start Agent Onboarding Registration</button>
+                New here? <button type="button" className="text-btn font-bold" onClick={() => { setMode('register'); setError(''); }}>Create an Account</button>
               </div>
             </form>
           ) : (
@@ -218,7 +183,7 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
               </div>
 
               <button type="submit" className="btn btn-primary btn-block margin-bottom" disabled={submitting}>
-                Complete Onboarding & Enter Portal <CheckCircle size={15} />
+                Create Account & Enter Portal <CheckCircle size={15} />
               </button>
 
               <div className="auth-switch-text">
@@ -231,9 +196,7 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
 
       <style>{`
         .btn-block { width: 100%; }
-        .demo-login-box { background: var(--bg-primary); padding: 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); }
-        .demo-title { font-size: 0.725rem; font-weight: 700; color: var(--text-muted); margin-bottom: 0.35rem; }
-        .demo-pills-row { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+        .auth-modal-logo { width: 22px; height: 22px; object-fit: contain; }
         .auth-switch-text { font-size: 0.775rem; color: var(--text-subtle); text-align: center; margin-top: 0.75rem; }
       `}</style>
     </div>
