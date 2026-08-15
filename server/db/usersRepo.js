@@ -4,7 +4,7 @@ function reshapeUser(row, allowedCampaignIds) {
   return {
     id: row.id,
     name: row.name,
-    email: row.email,
+    username: row.username,
     role: row.role,
     designation: row.designation,
     phone: row.phone,
@@ -33,8 +33,8 @@ async function shareCampaignAccess(userIdA, userIdB) {
   return rows.length > 0;
 }
 
-async function findUserRowByEmail(email) {
-  const { rows } = await pool.query('SELECT * FROM users WHERE lower(email) = lower($1)', [email]);
+async function findUserRowByUsername(username) {
+  const { rows } = await pool.query('SELECT * FROM users WHERE lower(username) = lower($1)', [username]);
   return rows[0] || null;
 }
 
@@ -61,5 +61,5 @@ async function listPublicUsers() {
 
 module.exports = {
   reshapeUser, getAllowedCampaignIds, shareCampaignAccess,
-  findUserRowByEmail, findUserRowById, toPublicUser, listPublicUsers
+  findUserRowByUsername, findUserRowById, toPublicUser, listPublicUsers
 };

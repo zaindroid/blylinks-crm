@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { User, Mail, Lock, CheckCircle, ArrowRight, X } from 'lucide-react';
+import { User, Lock, CheckCircle, ArrowRight, X } from 'lucide-react';
 import { login, bootstrapFirstAdmin, checkBootstrapStatus } from '../../api/auth';
 
 const LOGO_SRC = '/blylinks-logo.png';
 
 export default function AuthModal({ isOpen, onClose, onAuthenticated, closable = true }) {
   const [needsBootstrap, setNeedsBootstrap] = useState(null); // null while checking
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
-  const [bootstrapData, setBootstrapData] = useState({ name: '', email: '', password: '' });
+  const [bootstrapData, setBootstrapData] = useState({ name: '', username: '', password: '' });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -27,11 +27,11 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
     setError('');
     setSubmitting(true);
     try {
-      const user = await login(email, password);
+      const user = await login(username, password);
       onAuthenticated(user);
       onClose();
     } catch (err) {
-      setError(err.message || 'Invalid email or password.');
+      setError(err.message || 'Invalid username or password.');
     } finally {
       setSubmitting(false);
     }
@@ -39,7 +39,7 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
 
   const handleBootstrapSubmit = async (e) => {
     e.preventDefault();
-    if (!bootstrapData.name || !bootstrapData.email || !bootstrapData.password) {
+    if (!bootstrapData.name || !bootstrapData.username || !bootstrapData.password) {
       setError('Please fill in all fields.');
       return;
     }
@@ -89,13 +89,13 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
               </div>
 
               <div className="form-group">
-                <label className="form-label flex-align"><Mail size={13} /> Email *</label>
+                <label className="form-label flex-align"><User size={13} /> Username *</label>
                 <input
-                  type="email"
+                  type="text"
                   className="form-input"
-                  placeholder="you@company.com"
-                  value={bootstrapData.email}
-                  onChange={e => setBootstrapData({ ...bootstrapData, email: e.target.value })}
+                  placeholder="e.g. zain"
+                  value={bootstrapData.username}
+                  onChange={e => setBootstrapData({ ...bootstrapData, username: e.target.value })}
                   required
                 />
               </div>
@@ -119,13 +119,13 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
           ) : (
             <form onSubmit={handleLoginSubmit}>
               <div className="form-group">
-                <label className="form-label flex-align"><Mail size={13} /> Email Address</label>
+                <label className="form-label flex-align"><User size={13} /> Username</label>
                 <input
-                  type="email"
+                  type="text"
                   className="form-input"
-                  placeholder="name@blylinks.com"
-                  value={email}
-                  onChange={e => setEmail(e.target.value)}
+                  placeholder="your username"
+                  value={username}
+                  onChange={e => setUsername(e.target.value)}
                   required
                 />
               </div>

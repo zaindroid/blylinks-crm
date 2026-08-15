@@ -4,7 +4,7 @@ const jwt = require('jsonwebtoken');
 const pool = require('../db/pool');
 const config = require('../config');
 const asyncHandler = require('../utils/asyncHandler');
-const { findUserRowByEmail, toPublicUser } = require('../db/usersRepo');
+const { findUserRowByUsername, toPublicUser } = require('../db/usersRepo');
 
 const router = express.Router();
 
@@ -18,17 +18,17 @@ router.get('/bootstrap-status', asyncHandler(async (req, res) => {
 }));
 
 router.post('/login', asyncHandler(async (req, res) => {
-  const { email, password } = req.body;
-  if (!email || !password) {
-    return res.status(400).json({ error: 'email and password are required' });
+  const { username, password } = req.body;
+  if (!username || !password) {
+    return res.status(400).json({ error: 'username and password are required' });
   }
-  const row = await findUserRowByEmail(email);
+  const row = await findUserRowByUsername(username);
   if (!row) {
-    return res.status(401).json({ error: 'Invalid email or password' });
+    return res.status(401).json({ error: 'Invalid username or password' });
   }
   const valid = await bcrypt.compare(password, row.password_hash);
   if (!valid) {
-    return res.status(401).json({ error: 'Invalid email or password' });
+    return res.status(401).json({ error: 'Invalid username or password' });
   }
   if (row.status !== 'Active') {
     return res.status(403).json({ error: 'This account has been deactivated' });
@@ -48,23 +48,23 @@ router.post('/register', asyncHandler(async (req, res) => {
     return res.status(403).json({ error: 'Registration is closed. Ask an administrator to create your account.' });
   }
 
-  const { name, email, password } = req.body;
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: 'name, email and password are required' });
+  const { name, username, password } = req.body;
+  if (!name || !username || !password) {
+    return res.status(400).json({ error: 'name, username and password are required' });
   }
 
   const id = `usr_admin_${Date.now()}`;
   const passwordHash = await bcrypt.hash(password, 10);
   await pool.query(
-    `INSERT INTO users (id, name, email, password_hash, role, designation, status, avatar)
+    `INSERT INTO users (id, name, username, password_hash, role, designation, status, avatar)
      VALUES ($1,$2,$3,$4,'Admin','Administrator','Active',$5)`,
     [
-      id, name, email, passwordHash,
+      id, name, username, passwordHash,
       'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'
     ]
   );
 
-  const row = await findUserRowByEmail(email);
+  const row = await findUserRowByUsername(username);
   const token = issueToken(row);
   const user = await toPublicUser(row);
   res.status(201).json({ token, user });

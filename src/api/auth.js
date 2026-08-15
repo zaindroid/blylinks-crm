@@ -1,14 +1,14 @@
 import { apiFetch, setToken } from './client';
 
-export async function login(email, password) {
-  const { token, user } = await apiFetch('/auth/login', { method: 'POST', body: { email, password } });
+export async function login(username, password) {
+  const { token, user } = await apiFetch('/auth/login', { method: 'POST', body: { username, password } });
   setToken(token);
   return user;
 }
 
 // Bootstrap-only: only succeeds when the database has zero users.
-export async function bootstrapFirstAdmin({ name, email, password }) {
-  const { token, user } = await apiFetch('/auth/register', { method: 'POST', body: { name, email, password } });
+export async function bootstrapFirstAdmin({ name, username, password }) {
+  const { token, user } = await apiFetch('/auth/register', { method: 'POST', body: { name, username, password } });
   setToken(token);
   return user;
 }

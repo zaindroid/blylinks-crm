@@ -21,11 +21,11 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
         (u.role === 'Agent' && (u.allowedCampaignIds || []).some(id => ownCampaignIds.includes(id)))
       );
 
-  const [formData, setFormData] = useState({ name: '', email: '', password: '', role: 'Agent', campaignIds: [] });
+  const [formData, setFormData] = useState({ name: '', username: '', password: '', role: 'Agent', campaignIds: [] });
   const [accessCampaignIds, setAccessCampaignIds] = useState([]);
 
   const openAddModal = () => {
-    setFormData({ name: '', email: '', password: '', role: isSupervisor ? 'Agent' : 'Agent', campaignIds: [] });
+    setFormData({ name: '', username: '', password: '', role: isSupervisor ? 'Agent' : 'Agent', campaignIds: [] });
     setError('');
     setShowAddModal(true);
   };
@@ -45,7 +45,7 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
     try {
       await onAddUser({
         name: formData.name,
-        email: formData.email,
+        username: formData.username,
         password: formData.password,
         role: isAdmin ? formData.role : 'Agent',
         campaignIds: formData.campaignIds
@@ -92,7 +92,7 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
           <thead>
             <tr>
               <th>Name</th>
-              <th>Email</th>
+              <th>Username</th>
               <th>Role</th>
               <th>Campaign Access</th>
               <th>Status</th>
@@ -106,7 +106,7 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
               visibleUsers.map(u => (
                 <tr key={u.id}>
                   <td className="font-bold">{u.name}</td>
-                  <td className="text-muted">{u.email}</td>
+                  <td className="text-muted">{u.username}</td>
                   <td><span className={`badge ${u.role === 'Admin' ? 'badge-error' : u.role === 'Supervisor' ? 'badge-warning' : 'badge-neutral'}`}>{u.role}</span></td>
                   <td className="text-sm">{campaignNames(u.allowedCampaignIds)}</td>
                   <td><span className={`badge ${u.status === 'Active' ? 'badge-success' : 'badge-neutral'}`}>{u.status}</span></td>
@@ -147,8 +147,8 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
                 </div>
                 <div className="grid-2">
                   <div className="form-group">
-                    <label className="form-label">Email *</label>
-                    <input type="email" className="form-input" required value={formData.email} onChange={e => setFormData({ ...formData, email: e.target.value })} />
+                    <label className="form-label">Username *</label>
+                    <input type="text" className="form-input" required value={formData.username} onChange={e => setFormData({ ...formData, username: e.target.value })} />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Temporary Password *</label>

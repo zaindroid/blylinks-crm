@@ -4,7 +4,7 @@ const pool = require('../db/pool');
 const asyncHandler = require('../utils/asyncHandler');
 const { requireRole } = require('../middleware/auth');
 const {
-  listPublicUsers, toPublicUser, findUserRowByEmail, findUserRowById,
+  listPublicUsers, toPublicUser, findUserRowByUsername, findUserRowById,
   getAllowedCampaignIds, shareCampaignAccess
 } = require('../db/usersRepo');
 
@@ -26,10 +26,10 @@ router.post('/', asyncHandler(async (req, res) => {
     return res.status(403).json({ error: 'Only Admins and Supervisors can add users' });
   }
 
-  const { name, email, password } = req.body;
+  const { name, username, password } = req.body;
   let { role, campaignIds = [] } = req.body;
-  if (!name || !email || !password) {
-    return res.status(400).json({ error: 'name, email and password are required' });
+  if (!name || !username || !password) {
+    return res.status(400).json({ error: 'name, username and password are required' });
   }
 
   if (req.user.role === 'Supervisor') {
@@ -43,9 +43,9 @@ router.post('/', asyncHandler(async (req, res) => {
     role = ['Admin', 'Supervisor', 'Agent'].includes(role) ? role : 'Agent';
   }
 
-  const existing = await findUserRowByEmail(email);
+  const existing = await findUserRowByUsername(username);
   if (existing) {
-    return res.status(409).json({ error: 'An account with this email already exists' });
+    return res.status(409).json({ error: 'This username is already taken' });
   }
 
   const id = `usr_${role.toLowerCase()}_${Date.now()}`;
@@ -55,10 +55,10 @@ router.post('/', asyncHandler(async (req, res) => {
   try {
     await client.query('BEGIN');
     await client.query(
-      `INSERT INTO users (id, name, email, password_hash, role, designation, status, avatar)
+      `INSERT INTO users (id, name, username, password_hash, role, designation, status, avatar)
        VALUES ($1,$2,$3,$4,$5,$6,'Active',$7)`,
       [
-        id, name, email, passwordHash, role, DESIGNATIONS[role],
+        id, name, username, passwordHash, role, DESIGNATIONS[role],
         'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'
       ]
     );
