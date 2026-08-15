@@ -3,8 +3,14 @@
   "info": { "title": "Blylinks CRM API", "version": "1.0.0" },
   "paths": {
     "/api/auth/login": { "post": { "summary": "Log in", "responses": { "200": { "description": "OK" } } } },
-    "/api/auth/register": { "post": { "summary": "Register a new agent", "responses": { "201": { "description": "Created" } } } },
-    "/api/users": { "get": { "summary": "List users", "responses": { "200": { "description": "OK" } } } },
+    "/api/auth/bootstrap-status": { "get": { "summary": "Whether the database has zero users yet (public)", "responses": { "200": { "description": "OK" } } } },
+    "/api/auth/register": { "post": { "summary": "Bootstrap-only: creates the first Admin on an empty database, 403s otherwise", "responses": { "201": { "description": "Created" } } } },
+    "/api/users": {
+      "get": { "summary": "List users", "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Create a user (Admin: any role/campaigns; Supervisor: Agent-only, campaigns within own scope)", "responses": { "201": { "description": "Created" } } }
+    },
+    "/api/users/{id}": { "delete": { "summary": "Deactivate a user (Admin: anyone; Supervisor: own-scope Agents only)", "responses": { "200": { "description": "OK" } } } },
+    "/api/users/{id}/campaigns": { "patch": { "summary": "Replace a user's campaign access (Admin)", "responses": { "200": { "description": "OK" } } } },
     "/api/campaigns": {
       "get": { "summary": "List campaigns", "responses": { "200": { "description": "OK" } } },
       "post": { "summary": "Create campaign (Admin)", "responses": { "201": { "description": "Created" } } }

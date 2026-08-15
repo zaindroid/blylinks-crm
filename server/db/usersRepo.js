@@ -16,9 +16,21 @@ function reshapeUser(row, allowedCampaignIds) {
   };
 }
 
-async function getAllowedCampaignIds(agentId) {
-  const { rows } = await pool.query('SELECT campaign_id FROM campaign_agents WHERE agent_id = $1', [agentId]);
+async function getAllowedCampaignIds(userId) {
+  const { rows } = await pool.query('SELECT campaign_id FROM campaign_access WHERE user_id = $1', [userId]);
   return rows.map(r => r.campaign_id);
+}
+
+// True if userA and userB share at least one campaign -- used to scope what a
+// Supervisor is allowed to manage (their own campaign_access rows define reach).
+async function shareCampaignAccess(userIdA, userIdB) {
+  const { rows } = await pool.query(
+    `SELECT 1 FROM campaign_access a
+     JOIN campaign_access b ON a.campaign_id = b.campaign_id
+     WHERE a.user_id = $1 AND b.user_id = $2 LIMIT 1`,
+    [userIdA, userIdB]
+  );
+  return rows.length > 0;
 }
 
 async function findUserRowByEmail(email) {
@@ -38,13 +50,16 @@ async function toPublicUser(row) {
 
 async function listPublicUsers() {
   const { rows } = await pool.query('SELECT * FROM users ORDER BY created_at ASC');
-  const { rows: links } = await pool.query('SELECT campaign_id, agent_id FROM campaign_agents');
-  const byAgent = {};
+  const { rows: links } = await pool.query('SELECT campaign_id, user_id FROM campaign_access');
+  const byUser = {};
   for (const l of links) {
-    if (!byAgent[l.agent_id]) byAgent[l.agent_id] = [];
-    byAgent[l.agent_id].push(l.campaign_id);
+    if (!byUser[l.user_id]) byUser[l.user_id] = [];
+    byUser[l.user_id].push(l.campaign_id);
   }
-  return rows.map(row => reshapeUser(row, byAgent[row.id] || []));
+  return rows.map(row => reshapeUser(row, byUser[row.id] || []));
 }
 
-module.exports = { reshapeUser, getAllowedCampaignIds, findUserRowByEmail, findUserRowById, toPublicUser, listPublicUsers };
+module.exports = {
+  reshapeUser, getAllowedCampaignIds, shareCampaignAccess,
+  findUserRowByEmail, findUserRowById, toPublicUser, listPublicUsers
+};

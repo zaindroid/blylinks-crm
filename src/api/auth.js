@@ -6,10 +6,15 @@ export async function login(email, password) {
   return user;
 }
 
-export async function register({ name, email, password, phone, cnic, shift }) {
-  const { token, user } = await apiFetch('/auth/register', { method: 'POST', body: { name, email, password, phone, cnic, shift } });
+// Bootstrap-only: only succeeds when the database has zero users.
+export async function bootstrapFirstAdmin({ name, email, password }) {
+  const { token, user } = await apiFetch('/auth/register', { method: 'POST', body: { name, email, password } });
   setToken(token);
   return user;
+}
+
+export function checkBootstrapStatus() {
+  return apiFetch('/auth/bootstrap-status');
 }
 
 export function logout() {

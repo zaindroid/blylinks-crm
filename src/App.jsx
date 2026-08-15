@@ -17,6 +17,7 @@ import LeadManagement from './components/Shared/LeadManagement';
 import ReportsAnalytics from './components/Shared/ReportsAnalytics';
 import KnowledgeBase from './components/Shared/KnowledgeBase';
 import SupportTickets from './components/Shared/SupportTickets';
+import TeamManagement from './components/Shared/TeamManagement';
 import TaskNotificationDrawer from './components/TaskNotificationDrawer';
 import ChatDrawer from './components/Chat/ChatDrawer';
 import AuthModal from './components/Auth/AuthModal';
@@ -24,7 +25,7 @@ import { requestNotificationPermission, showDesktopNotification } from './utils/
 
 import { getToken, setToken, decodeToken } from './api/client';
 import { logout as apiLogout } from './api/auth';
-import { fetchUsers } from './api/users';
+import { fetchUsers, createUser, deactivateUser, updateUserCampaigns } from './api/users';
 import { fetchCampaigns, createCampaign, updateCampaign, toggleCampaignStatus } from './api/campaigns';
 import { fetchSales, submitSale, approveSale, rejectSale } from './api/sales';
 import { fetchAttendance, clockIn, clockOut, updateAttendanceStatus } from './api/attendance';
@@ -296,6 +297,22 @@ export default function App() {
     setPayroll(await fetchPayroll());
   };
 
+  // Team / User Handlers
+  const handleAddUser = async (payload) => {
+    await createUser(payload);
+    setAllUsers(await fetchUsers());
+  };
+
+  const handleDeactivateUser = async (userId) => {
+    await deactivateUser(userId);
+    setAllUsers(await fetchUsers());
+  };
+
+  const handleUpdateUserCampaigns = async (userId, campaignIds) => {
+    await updateUserCampaigns(userId, campaignIds);
+    setAllUsers(await fetchUsers());
+  };
+
   // Project Handlers
   const handleAddProject = async (newProj) => {
     await createCampaign({
@@ -478,6 +495,17 @@ export default function App() {
               attendanceLogs={attendanceLogs}
               users={allUsers}
               onUpdateAttendance={handleUpdateAttendance}
+            />
+          )}
+
+          {activeTab === 'team' && (
+            <TeamManagement
+              currentUser={currentUser}
+              users={allUsers}
+              projects={projects}
+              onAddUser={handleAddUser}
+              onDeactivateUser={handleDeactivateUser}
+              onUpdateUserCampaigns={handleUpdateUserCampaigns}
             />
           )}
 

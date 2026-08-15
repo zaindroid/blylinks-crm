@@ -13,6 +13,7 @@ import {
   LifeBuoy,
   FileText,
   UserCheck,
+  UserPlus,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -42,7 +43,8 @@ function getNavSections(role, pendingQaCount) {
       items: [
         { id: 'qa-approval', label: 'QA Audit', icon: CheckSquare, badge: pendingQaCount },
         { id: 'leads', label: 'Lead CRM', icon: Users },
-        { id: 'team-attendance', label: 'Team Attendance', icon: UserCheck }
+        { id: 'team-attendance', label: 'Team Attendance', icon: UserCheck },
+        { id: 'team', label: 'Team & Access', icon: UserPlus }
       ]
     });
   }

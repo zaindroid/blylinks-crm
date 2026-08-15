@@ -20,11 +20,11 @@ async function listCampaigns() {
     ) s ON s.campaign_id = c.id
     ORDER BY c.created_at ASC
   `);
-  const { rows: links } = await pool.query('SELECT campaign_id, agent_id FROM campaign_agents');
+  const { rows: links } = await pool.query('SELECT campaign_id, user_id FROM campaign_access');
   const byCampaign = {};
   for (const l of links) {
     if (!byCampaign[l.campaign_id]) byCampaign[l.campaign_id] = [];
-    byCampaign[l.campaign_id].push(l.agent_id);
+    byCampaign[l.campaign_id].push(l.user_id);
   }
   return rows.map(row => ({
     id: row.id,
@@ -57,8 +57,8 @@ router.post('/', requireRole('Admin'), asyncHandler(async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,'Active')`,
       [id, name, client, category, monthlyTargetPkr || 0, commissionRate || 0]
     );
-    for (const agentId of assignedAgentIds) {
-      await dbClient.query('INSERT INTO campaign_agents (campaign_id, agent_id) VALUES ($1,$2)', [id, agentId]);
+    for (const userId of assignedAgentIds) {
+      await dbClient.query('INSERT INTO campaign_access (campaign_id, user_id) VALUES ($1,$2)', [id, userId]);
     }
     await dbClient.query('COMMIT');
   } catch (err) {
@@ -89,9 +89,9 @@ router.patch('/:id', requireRole('Admin'), asyncHandler(async (req, res) => {
     const dbClient = await pool.connect();
     try {
       await dbClient.query('BEGIN');
-      await dbClient.query('DELETE FROM campaign_agents WHERE campaign_id = $1', [id]);
-      for (const agentId of assignedAgentIds) {
-        await dbClient.query('INSERT INTO campaign_agents (campaign_id, agent_id) VALUES ($1,$2)', [id, agentId]);
+      await dbClient.query('DELETE FROM campaign_access WHERE campaign_id = $1', [id]);
+      for (const userId of assignedAgentIds) {
+        await dbClient.query('INSERT INTO campaign_access (campaign_id, user_id) VALUES ($1,$2)', [id, userId]);
       }
       await dbClient.query('COMMIT');
     } catch (err) {

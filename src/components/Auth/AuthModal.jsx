@@ -1,23 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { User, Mail, Lock, CheckCircle, ArrowRight, X } from 'lucide-react';
-import { login, register } from '../../api/auth';
+import { login, bootstrapFirstAdmin, checkBootstrapStatus } from '../../api/auth';
 
 const LOGO_SRC = '/blylinks-logo.png';
 
 export default function AuthModal({ isOpen, onClose, onAuthenticated, closable = true }) {
-  const [mode, setMode] = useState('login'); // 'login' or 'register'
+  const [needsBootstrap, setNeedsBootstrap] = useState(null); // null while checking
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [submitting, setSubmitting] = useState(false);
-
-  // Registration Form Data
-  const [regData, setRegData] = useState({
-    name: '',
-    email: '',
-    password: ''
-  });
-
   const [error, setError] = useState('');
+
+  const [bootstrapData, setBootstrapData] = useState({ name: '', email: '', password: '' });
+
+  useEffect(() => {
+    if (!isOpen) return;
+    checkBootstrapStatus()
+      .then(({ needsBootstrap }) => setNeedsBootstrap(needsBootstrap))
+      .catch(() => setNeedsBootstrap(false));
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -36,20 +37,20 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
     }
   };
 
-  const handleRegisterSubmit = async (e) => {
+  const handleBootstrapSubmit = async (e) => {
     e.preventDefault();
-    if (!regData.name || !regData.email || !regData.password) {
-      setError('Please fill in all required fields.');
+    if (!bootstrapData.name || !bootstrapData.email || !bootstrapData.password) {
+      setError('Please fill in all fields.');
       return;
     }
     setError('');
     setSubmitting(true);
     try {
-      const user = await register(regData);
+      const user = await bootstrapFirstAdmin(bootstrapData);
       onAuthenticated(user);
       onClose();
     } catch (err) {
-      setError(err.message || 'Could not complete registration.');
+      setError(err.message || 'Could not set up the organization.');
     } finally {
       setSubmitting(false);
     }
@@ -61,7 +62,7 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
         <div className="modal-header">
           <div className="flex-align">
             <img src={LOGO_SRC} alt="Blylinks" className="auth-modal-logo" />
-            <span className="modal-title">Blylinks Portal — {mode === 'login' ? 'Account Login' : 'Create Account'}</span>
+            <span className="modal-title">Blylinks Portal — {needsBootstrap ? 'Set Up Your Organization' : 'Account Login'}</span>
           </div>
           {closable && <button className="icon-btn" onClick={onClose}><X size={18} /></button>}
         </div>
@@ -69,7 +70,53 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
         <div className="modal-body">
           {error && <div className="error-alert">{error}</div>}
 
-          {mode === 'login' ? (
+          {needsBootstrap === null ? (
+            <div className="auth-loading">Checking portal status…</div>
+          ) : needsBootstrap ? (
+            <form onSubmit={handleBootstrapSubmit}>
+              <p className="auth-bootstrap-note">No account exists yet. Create the first Admin account to set up this workspace.</p>
+
+              <div className="form-group">
+                <label className="form-label flex-align"><User size={13} /> Your Name *</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="e.g. Zain Malik"
+                  value={bootstrapData.name}
+                  onChange={e => setBootstrapData({ ...bootstrapData, name: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label flex-align"><Mail size={13} /> Email *</label>
+                <input
+                  type="email"
+                  className="form-input"
+                  placeholder="you@company.com"
+                  value={bootstrapData.email}
+                  onChange={e => setBootstrapData({ ...bootstrapData, email: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label flex-align"><Lock size={13} /> Password *</label>
+                <input
+                  type="password"
+                  className="form-input"
+                  placeholder="••••••••"
+                  value={bootstrapData.password}
+                  onChange={e => setBootstrapData({ ...bootstrapData, password: e.target.value })}
+                  required
+                />
+              </div>
+
+              <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
+                Create Organization & Sign In <CheckCircle size={15} />
+              </button>
+            </form>
+          ) : (
             <form onSubmit={handleLoginSubmit}>
               <div className="form-group">
                 <label className="form-label flex-align"><Mail size={13} /> Email Address</label>
@@ -95,60 +142,11 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
                 />
               </div>
 
-              <button type="submit" className="btn btn-primary btn-block margin-bottom" disabled={submitting}>
+              <button type="submit" className="btn btn-primary btn-block" disabled={submitting}>
                 Sign In To Portal <ArrowRight size={15} />
               </button>
 
-              <div className="auth-switch-text">
-                New here? <button type="button" className="text-btn font-bold" onClick={() => { setMode('register'); setError(''); }}>Create an Account</button>
-              </div>
-            </form>
-          ) : (
-            <form onSubmit={handleRegisterSubmit}>
-              <div className="form-group">
-                <label className="form-label flex-align"><User size={13} /> Full Name *</label>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="e.g. Muhammad Ali"
-                  value={regData.name}
-                  onChange={e => setRegData({...regData, name: e.target.value})}
-                  required
-                />
-              </div>
-
-              <div className="grid-2">
-                <div className="form-group">
-                  <label className="form-label flex-align"><Mail size={13} /> Email *</label>
-                  <input
-                    type="email"
-                    className="form-input"
-                    placeholder="agent@email.com"
-                    value={regData.email}
-                    onChange={e => setRegData({...regData, email: e.target.value})}
-                    required
-                  />
-                </div>
-                <div className="form-group">
-                  <label className="form-label flex-align"><Lock size={13} /> Password *</label>
-                  <input
-                    type="password"
-                    className="form-input"
-                    placeholder="••••••••"
-                    value={regData.password}
-                    onChange={e => setRegData({...regData, password: e.target.value})}
-                    required
-                  />
-                </div>
-              </div>
-
-              <button type="submit" className="btn btn-primary btn-block margin-bottom" disabled={submitting}>
-                Create Account & Enter Portal <CheckCircle size={15} />
-              </button>
-
-              <div className="auth-switch-text">
-                Already registered? <button type="button" className="text-btn font-bold" onClick={() => { setMode('login'); setError(''); }}>Sign In</button>
-              </div>
+              <p className="auth-bootstrap-note margin-top">Don't have an account? Ask your Admin or Supervisor to add you from the Team screen.</p>
             </form>
           )}
         </div>
@@ -157,7 +155,8 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
       <style>{`
         .btn-block { width: 100%; }
         .auth-modal-logo { width: 22px; height: 22px; object-fit: contain; }
-        .auth-switch-text { font-size: 0.775rem; color: var(--text-subtle); text-align: center; margin-top: 0.75rem; }
+        .auth-bootstrap-note { font-size: 0.775rem; color: var(--text-subtle); text-align: center; margin: 0 0 0.75rem; }
+        .auth-loading { font-size: 0.85rem; color: var(--text-subtle); text-align: center; padding: 1rem 0; }
       `}</style>
     </div>
   );
