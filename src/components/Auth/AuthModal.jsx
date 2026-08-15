@@ -62,7 +62,7 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
         <div className="modal-header">
           <div className="flex-align">
             <img src={LOGO_SRC} alt="Blylinks" className="auth-modal-logo" />
-            <span className="modal-title">Blylinks Portal — {needsBootstrap ? 'Set Up Your Organization' : 'Account Login'}</span>
+            <span className="modal-title">Blylinks Operations Portal — {needsBootstrap ? 'Set Up Your Organization' : 'Account Login'}</span>
           </div>
           {closable && <button className="icon-btn" onClick={onClose}><X size={18} /></button>}
         </div>

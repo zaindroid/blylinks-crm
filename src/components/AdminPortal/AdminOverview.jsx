@@ -45,7 +45,7 @@ export default function AdminOverview({
       {/* Top Header */}
       <div className="page-header">
         <div className="page-header-text">
-          <h1 className="page-title">Operations Console</h1>
+          <h1 className="page-title">Operations Portal</h1>
           <p className="page-subtitle">BlyLinks Call Center Oversight &bull; Active Campaign: <span className="font-bold text-accent">{activeProject?.name}</span></p>
         </div>
         <div className="page-header-actions">

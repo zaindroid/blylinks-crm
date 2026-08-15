@@ -86,7 +86,7 @@ export default function Sidebar({ currentRole, activeTab, setActiveTab, pendingQ
           {!collapsed && (
             <div className="sidebar-brand-text">
               <span className="sidebar-brand-name">BlyLinks</span>
-              <span className="sidebar-brand-sub">Operations Console</span>
+              <span className="sidebar-brand-sub">Operations Portal</span>
             </div>
           )}
         </div>

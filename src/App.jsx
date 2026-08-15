@@ -376,7 +376,7 @@ export default function App() {
   const pendingQaCount = sales.filter(s => s.status === 'Pending').length;
 
   if (authChecking) {
-    return <div className="app-loading">Loading Blylinks Portal…</div>;
+    return <div className="app-loading">Loading Blylinks Operations Portal…</div>;
   }
 
   if (!currentUser) {
