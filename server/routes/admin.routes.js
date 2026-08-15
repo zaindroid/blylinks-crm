@@ -7,7 +7,7 @@ const router = express.Router();
 
 const RESETTABLE_TABLES = [
   'messages', 'tickets', 'payroll', 'leads', 'callbacks', 'targets',
-  'attendance_logs', 'sales', 'campaign_agents', 'campaigns', 'kb_articles', 'users'
+  'attendance_logs', 'sales', 'campaign_access', 'campaigns', 'kb_articles', 'users'
 ];
 
 router.post('/reset-data', requireRole('Admin'), asyncHandler(async (req, res) => {
