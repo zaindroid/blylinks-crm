@@ -81,7 +81,7 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="e.g. Zain Malik"
+                  placeholder="Full name"
                   value={bootstrapData.name}
                   onChange={e => setBootstrapData({ ...bootstrapData, name: e.target.value })}
                   required
@@ -93,7 +93,6 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="e.g. zain"
                   value={bootstrapData.username}
                   onChange={e => setBootstrapData({ ...bootstrapData, username: e.target.value })}
                   required
@@ -105,7 +104,6 @@ export default function AuthModal({ isOpen, onClose, onAuthenticated, closable =
                 <input
                   type="password"
                   className="form-input"
-                  placeholder="••••••••"
                   value={bootstrapData.password}
                   onChange={e => setBootstrapData({ ...bootstrapData, password: e.target.value })}
                   required
