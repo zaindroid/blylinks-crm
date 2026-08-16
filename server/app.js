@@ -1,5 +1,6 @@
 const express = require('express');
 const path = require('path');
+const helmet = require('helmet');
 const pinoHttp = require('pino-http');
 const logger = require('./logger');
 const config = require('./config');
@@ -25,6 +26,20 @@ const adminRoutes = require('./routes/admin.routes');
 function buildApp() {
   const app = express();
 
+  // CSP defaults customized for two things this app actually needs: the
+  // Google Fonts stylesheet + font files it loads, and inline styles (React
+  // components here use some inline style attributes). Script-src is left
+  // at helmet's strict default ('self' only) -- the built bundle is a single
+  // hashed module script, no inline scripts, so no exception needed there.
+  app.use(helmet({
+    contentSecurityPolicy: {
+      directives: {
+        ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+        'style-src': ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
+        'font-src': ["'self'", 'https://fonts.gstatic.com'],
+      },
+    },
+  }));
   app.use(express.json());
   app.use(pinoHttp({ logger }));
 

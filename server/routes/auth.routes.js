@@ -1,12 +1,25 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
 const pool = require('../db/pool');
 const config = require('../config');
 const asyncHandler = require('../utils/asyncHandler');
 const { findUserRowByUsername, toPublicUser } = require('../db/usersRepo');
 
 const router = express.Router();
+
+// Applies to /login and /register (the bootstrap admin-creation endpoint) --
+// both are unauthenticated by design and were previously unthrottled, which
+// meant unlimited password-guessing attempts against /login. 20 attempts per
+// 15 minutes per IP is generous for a real user, punishing for a brute force.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many attempts, please try again later' },
+});
 
 function issueToken(row) {
   return jwt.sign({ sub: row.id, role: row.role }, config.jwtSecret, { expiresIn: '12h' });
@@ -17,7 +30,7 @@ router.get('/bootstrap-status', asyncHandler(async (req, res) => {
   res.json({ needsBootstrap: rows[0].count === 0 });
 }));
 
-router.post('/login', asyncHandler(async (req, res) => {
+router.post('/login', authLimiter, asyncHandler(async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
     return res.status(400).json({ error: 'username and password are required' });
@@ -42,7 +55,7 @@ router.post('/login', asyncHandler(async (req, res) => {
 // very first Admin account on an empty database and permanently locks itself
 // the moment any user exists -- ongoing account creation happens through
 // POST /api/users (Admin/Supervisor only), not here.
-router.post('/register', asyncHandler(async (req, res) => {
+router.post('/register', authLimiter, asyncHandler(async (req, res) => {
   const { rows: userCountRows } = await pool.query('SELECT COUNT(*)::int AS count FROM users');
   if (userCountRows[0].count > 0) {
     return res.status(403).json({ error: 'Registration is closed. Ask an administrator to create your account.' });

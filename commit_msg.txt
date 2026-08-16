@@ -1,0 +1,23 @@
+security: rate-limit auth endpoints, add security headers, pin JWT algorithm, fix critical dep vuln
+
+- POST /api/auth/login and /api/auth/register were completely unthrottled --
+  unlimited password-guessing attempts against login with no lockout. Added
+  express-rate-limit (20 req/15min per IP) to both.
+- jwt.verify() didn't pin an allowed algorithm. Not currently exploitable
+  given the jsonwebtoken version in use, but explicit algorithms: ['HS256']
+  removes the ambiguity rather than relying on the library's default.
+- Added helmet for standard security headers (X-Frame-Options,
+  X-Content-Type-Options, CSP, etc). CSP customized to allow the Google
+  Fonts stylesheet/font files and inline styles the app actually uses --
+  script-src stays at helmet's strict 'self'-only default, since the built
+  bundle is a single hashed module script with no inline scripts.
+- Bumped bcrypt 5.1.1 -> 6.0.0, clearing the critical arbitrary-file-write
+  vulnerability in its bundled tar/node-pre-gyp install chain (GHSA-34x7-hfp2-rc4v).
+  hash/compare API unchanged, verified via a clean build + syntax check.
+
+Remaining: npm audit still shows 1 moderate + 1 high in vite/esbuild, both
+dev-server-only (CSP/fs-deny bypasses reachable only via `vite dev`, never
+hit in production since this app only ever runs `vite build` + serves the
+static output). Fixing requires a vite 5->8 major bump with real breaking-change
+risk to the build pipeline -- deliberately left for a dedicated follow-up
+rather than rushed in here.

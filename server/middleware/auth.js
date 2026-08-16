@@ -8,7 +8,7 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Missing bearer token' });
   }
   try {
-    const payload = jwt.verify(token, config.jwtSecret);
+    const payload = jwt.verify(token, config.jwtSecret, { algorithms: ['HS256'] });
     req.user = { id: payload.sub, role: payload.role };
     next();
   } catch (err) {
