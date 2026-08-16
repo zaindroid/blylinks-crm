@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import LoadingScreen from './components/LoadingScreen';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import AgentOverview from './components/AgentPortal/AgentOverview';
@@ -40,6 +41,14 @@ import { fetchTickets, addTicket, resolveTicket } from './api/tickets';
 export default function App() {
   const [authChecking, setAuthChecking] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
+
+  // Splash screen: shown for at least MIN_SPLASH_MS regardless of how fast
+  // the auth check resolves, so it's actually seen rather than flickering
+  // past on a fast connection -- then fades out into whichever screen
+  // (dashboard or login) is actually ready underneath.
+  const [showSplash, setShowSplash] = useState(true);
+  const [splashFading, setSplashFading] = useState(false);
+  const splashMountedAt = useRef(performance.now());
   const [allUsers, setAllUsers] = useState([]);
   const [theme, setTheme] = useState('light');
   const [activeTab, setActiveTab] = useState('overview');
@@ -72,6 +81,15 @@ export default function App() {
   useEffect(() => {
     requestNotificationPermission();
   }, []);
+
+  useEffect(() => {
+    if (authChecking) return undefined;
+    const MIN_SPLASH_MS = 1500;
+    const elapsed = performance.now() - splashMountedAt.current;
+    const remaining = Math.max(MIN_SPLASH_MS - elapsed, 0);
+    const timer = setTimeout(() => setSplashFading(true), remaining);
+    return () => clearTimeout(timer);
+  }, [authChecking]);
 
   // Silently restore a session from a stored JWT, if any
   useEffect(() => {
@@ -375,8 +393,12 @@ export default function App() {
 
   const pendingQaCount = sales.filter(s => s.status === 'Pending').length;
 
+  // The splash screen (below, in the outer return) covers the full viewport
+  // until it fades out, so what renders here during authChecking doesn't
+  // matter visually -- null keeps it cheap.
+  function renderContent() {
   if (authChecking) {
-    return <div className="app-loading">Loading Blylinks Operations Portal…</div>;
+    return null;
   }
 
   if (!currentUser) {
@@ -601,5 +623,18 @@ export default function App() {
         onMinimize={handleMinimizeChat}
       />
     </div>
+  );
+  }
+
+  return (
+    <>
+      {renderContent()}
+      {showSplash && (
+        <LoadingScreen
+          fading={splashFading}
+          onFadeOutComplete={() => setShowSplash(false)}
+        />
+      )}
+    </>
   );
 }
