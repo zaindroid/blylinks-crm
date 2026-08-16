@@ -50,31 +50,25 @@ void main() {
   vec2 p = (uv * 2.0 - 1.0);
   p.x *= uResolution.x / uResolution.y;
 
-  // Faster, livelier drift than a moody slow-burn -- this is meant to read
-  // as bright and energetic, not atmospheric.
-  float t = uTime * 0.09;
-  float n = fbm(p * 1.2 + vec2(t, -t * 0.7));
-  float n2 = fbm(p * 1.9 - vec2(-t * 0.5, t * 0.9) + 4.0);
-  float n3 = fbm(p * 1.5 + vec2(t * 0.6, t * 0.4) + 9.0);
+  float t = uTime * 0.05;
+  float n = fbm(p * 1.3 + vec2(t, -t * 0.6));
+  float n2 = fbm(p * 2.1 - vec2(-t * 0.4, t * 0.8) + 4.0);
+  float flow = fbm(vec2(n, n2) * 1.4 + t * 0.25);
 
-  // Near-white base (matches --bg-primary), softly tinted by three brand-
-  // adjacent hues as blurred mesh-gradient blobs -- the light, airy "fresh
-  // SaaS" look, not a dark void.
-  vec3 base = vec3(0.976, 0.980, 0.992);
+  vec3 deepBg = vec3(0.043, 0.039, 0.071);   // near --bg-primary dark ink
   vec3 indigo = vec3(0.310, 0.275, 0.898);   // --accent #4f46e5
-  vec3 violet = vec3(0.663, 0.545, 0.984);   // lighter violet lift
-  vec3 sky = vec3(0.376, 0.647, 0.980);      // fresh cyan-blue accent
+  vec3 violet = vec3(0.541, 0.361, 0.965);   // soft accent lift
 
-  vec3 color = base;
-  color = mix(color, indigo, smoothstep(0.45, 0.95, n) * 0.30);
-  color = mix(color, violet, smoothstep(0.5, 0.95, n2) * 0.26);
-  color = mix(color, sky, smoothstep(0.55, 0.95, n3) * 0.22);
+  vec3 color = deepBg;
+  color = mix(color, indigo, smoothstep(0.35, 0.85, flow) * 0.5);
+  color = mix(color, violet, smoothstep(0.55, 0.95, n2) * 0.28);
 
-  // Gentle brightening toward center -- an inverted, soft glow instead of
-  // a vignette, keeps the middle (where the logo sits) crisp and airy.
   float dist = length(p);
-  float centerLift = smoothstep(1.1, 0.0, dist) * 0.12;
-  color = mix(color, vec3(1.0), centerLift);
+  float vignette = smoothstep(1.5, 0.15, dist);
+  color *= mix(0.5, 1.0, vignette);
+
+  float glow = smoothstep(0.85, 0.0, dist) * 0.22;
+  color += indigo * glow;
 
   gl_FragColor = vec4(color, 1.0);
 }
@@ -225,7 +219,7 @@ export default function LoadingScreen({ fading, onFadeOutComplete }) {
           display: flex;
           align-items: center;
           justify-content: center;
-          background: radial-gradient(circle at 50% 45%, #ffffff 0%, #f4f5fb 60%, #eef0f9 100%);
+          background: radial-gradient(circle at 50% 45%, #16132a 0%, #0b0912 70%, #08070d 100%);
           opacity: 1;
           transition: opacity 0.6s ease;
         }
@@ -260,8 +254,8 @@ export default function LoadingScreen({ fading, onFadeOutComplete }) {
           width: 56px;
           height: 56px;
           border-radius: 14px;
-          box-shadow: 0 0 0 1px rgba(79, 70, 229, 0.10),
-                      0 14px 36px -10px rgba(79, 70, 229, 0.45);
+          box-shadow: 0 0 0 1px rgba(255,255,255,0.08),
+                      0 12px 40px -8px rgba(79, 70, 229, 0.65);
           margin-bottom: 0.75rem;
         }
         .loading-screen__wordmark {
@@ -269,7 +263,7 @@ export default function LoadingScreen({ fading, onFadeOutComplete }) {
           font-size: 1.5rem;
           font-weight: 700;
           letter-spacing: 0.02em;
-          color: #14151f;
+          color: #f5f5fa;
         }
         .loading-screen__subtitle {
           font-family: 'Inter', sans-serif;
@@ -277,7 +271,7 @@ export default function LoadingScreen({ fading, onFadeOutComplete }) {
           font-weight: 500;
           letter-spacing: 0.16em;
           text-transform: uppercase;
-          color: rgba(79, 70, 229, 0.55);
+          color: rgba(199, 197, 224, 0.55);
           margin-bottom: 1.6rem;
         }
         .loading-screen__dots {
@@ -288,8 +282,8 @@ export default function LoadingScreen({ fading, onFadeOutComplete }) {
           width: 6px;
           height: 6px;
           border-radius: 50%;
-          background: #4f46e5;
-          opacity: 0.4;
+          background: #a5b4fc;
+          opacity: 0.35;
           animation: loading-dot-pulse 1.2s ease-in-out infinite;
         }
         .loading-screen__dots span:nth-child(2) { animation-delay: 0.15s; }
