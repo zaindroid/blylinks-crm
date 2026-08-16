@@ -84,7 +84,7 @@ export default function App() {
 
   useEffect(() => {
     if (authChecking) return undefined;
-    const MIN_SPLASH_MS = 1500;
+    const MIN_SPLASH_MS = 2600;
     const elapsed = performance.now() - splashMountedAt.current;
     const remaining = Math.max(MIN_SPLASH_MS - elapsed, 0);
     const timer = setTimeout(() => setSplashFading(true), remaining);
