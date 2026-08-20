@@ -4,7 +4,10 @@ const jwt = require('jsonwebtoken');
 const pool = require('../db/pool');
 const config = require('../config');
 const asyncHandler = require('../utils/asyncHandler');
-const { findUserRowByUsername, toPublicUser } = require('../db/usersRepo');
+const genId = require('../utils/genId');
+const { passwordError } = require('../utils/validatePassword');
+const { requireAuth } = require('../middleware/auth');
+const { findUserRowByUsername, findUserRowById, toPublicUser } = require('../db/usersRepo');
 
 const router = express.Router();
 
@@ -52,8 +55,12 @@ router.post('/register', asyncHandler(async (req, res) => {
   if (!name || !username || !password) {
     return res.status(400).json({ error: 'name, username and password are required' });
   }
+  const pwError = passwordError(password);
+  if (pwError) {
+    return res.status(400).json({ error: pwError });
+  }
 
-  const id = `usr_admin_${Date.now()}`;
+  const id = genId('usr_admin');
   const passwordHash = await bcrypt.hash(password, 10);
   await pool.query(
     `INSERT INTO users (id, name, username, password_hash, role, designation, status, avatar)
@@ -68,6 +75,30 @@ router.post('/register', asyncHandler(async (req, res) => {
   const token = issueToken(row);
   const user = await toPublicUser(row);
   res.status(201).json({ token, user });
+}));
+
+// Self-service only -- an Admin/Supervisor sets someone's initial password via
+// POST /api/users, but from then on only the account owner can change it, and
+// only by proving they already know the current one.
+router.patch('/change-password', requireAuth, asyncHandler(async (req, res) => {
+  const { currentPassword, newPassword } = req.body;
+  if (!currentPassword || !newPassword) {
+    return res.status(400).json({ error: 'currentPassword and newPassword are required' });
+  }
+  const pwError = passwordError(newPassword);
+  if (pwError) {
+    return res.status(400).json({ error: pwError });
+  }
+
+  const row = await findUserRowById(req.user.id);
+  const valid = await bcrypt.compare(currentPassword, row.password_hash);
+  if (!valid) {
+    return res.status(401).json({ error: 'Current password is incorrect' });
+  }
+
+  const newHash = await bcrypt.hash(newPassword, 10);
+  await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, req.user.id]);
+  res.json({ status: 'password updated' });
 }));
 
 module.exports = router;

@@ -1,25 +1,26 @@
 import React from 'react';
-import { 
-  DollarSign, 
-  Users, 
-  CheckCircle, 
-  Clock, 
-  AlertTriangle, 
-  TrendingUp, 
-  UserCheck,
-  PlusCircle
-} from 'lucide-react';
+import { CheckCircle, PlusCircle } from 'lucide-react';
 import { formatPKR } from '../../utils/currency';
+import SalesLeaderboard from '../Shared/SalesLeaderboard';
+import DashboardMessenger from '../Shared/DashboardMessenger';
 
-export default function SupervisorOverview({ 
-  sales, 
-  users, 
-  attendanceLogs, 
-  onApproveSale, 
-  onRejectSale, 
+function statusBadgeClass(status) {
+  if (status === 'Present') return 'badge-success';
+  if (status === 'Tardy' || status === 'Late') return 'badge-warning';
+  return 'badge-error';
+}
+
+export default function SupervisorOverview({
+  currentUser,
+  sales,
+  users,
+  attendanceLogs,
+  onApproveSale,
+  onRejectSale,
   setActiveTab,
   selectedCampaignId,
-  projects
+  projects,
+  onSendMessage
 }) {
   const activeProject = projects.find(p => p.id === selectedCampaignId) || projects[0];
 
@@ -41,11 +42,11 @@ export default function SupervisorOverview({
       <div className="page-header">
         <div className="page-header-text">
           <h1 className="page-title">Supervisor Console</h1>
-          <p className="page-subtitle">Team QA audit &amp; lead routing &bull; Active Campaign: <span className="font-bold text-accent">{activeProject?.name}</span></p>
+          <p className="page-subtitle">Team administrative review &amp; lead routing &bull; Active Campaign: <span className="font-bold text-accent">{activeProject?.name}</span></p>
         </div>
         <div className="page-header-actions">
           <button className="btn btn-primary" onClick={() => setActiveTab('qa-approval')}>
-            <CheckCircle size={15} /> QA Audit Queue ({pendingSales.length})
+            <CheckCircle size={15} /> Administrative Review Queue ({pendingSales.length})
           </button>
           <button className="btn btn-secondary" onClick={() => setActiveTab('leads')}>
             <PlusCircle size={15} /> Add / Assign Lead
@@ -56,43 +57,42 @@ export default function SupervisorOverview({
       {/* KPI Cards */}
       <div className="kpi-grid">
         <div className="kpi-card">
-          <div className="kpi-head"><span>Pending QA Audit</span><div className="kpi-icon"><Clock size={16} /></div></div>
+          <div className="kpi-head"><span>Pending Review</span></div>
           <div className="kpi-value">{pendingSales.length}</div>
-          <div className="kpi-sub"><span className="text-warning">Deals Awaiting Audit</span></div>
+          <div className="kpi-sub"><span className="text-warning">Deals Awaiting Review</span></div>
         </div>
 
         <div className="kpi-card">
-          <div className="kpi-head"><span>QA Approval Rate</span><div className="kpi-icon"><TrendingUp size={16} /></div></div>
+          <div className="kpi-head"><span>Approval Rate</span></div>
           <div className="kpi-value">{approvalRate}%</div>
           <div className="kpi-sub"><span>{approvedSales.length} Approved / {totalSubmissions} Total</span></div>
         </div>
 
         <div className="kpi-card">
-          <div className="kpi-head"><span>Agents On Shift</span><div className="kpi-icon"><UserCheck size={16} /></div></div>
+          <div className="kpi-head"><span>Agents On Shift</span></div>
           <div className="kpi-value">{clockedInCount}</div>
           <div className="kpi-sub"><span>Out of {agents.length} Total Agents</span></div>
         </div>
 
         <div className="kpi-card">
-          <div className="kpi-head"><span>Campaign Sales Revenue</span><div className="kpi-icon"><DollarSign size={16} /></div></div>
+          <div className="kpi-head"><span>Campaign Sales Revenue</span></div>
           <div className="kpi-value">{formatPKR(totalRevenuePkr)}</div>
           <div className="kpi-sub"><span className="text-success">{approvedSales.length} Approved Deals</span></div>
         </div>
       </div>
 
-      {/* Main Grid: QA Audit Queue + Shift Roster */}
+      {/* Main Grid: Administrative Review Queue + Shift Roster */}
       <div className="grid-2">
-        {/* QA Audit Queue */}
+        {/* Administrative Review Queue */}
         <div className="card">
           <div className="card-header">
-            <span className="card-title"><AlertTriangle size={16} className="text-warning" /> QA Audit Queue ({pendingSales.length})</span>
+            <span className="card-title">Administrative Review Queue ({pendingSales.length})</span>
             <button className="text-btn" onClick={() => setActiveTab('qa-approval')}>View All Queue</button>
           </div>
 
           {pendingSales.length === 0 ? (
             <div className="empty-qa-box">
-              <CheckCircle size={16} className="text-success" />
-              <span>All submitted deals for {activeProject?.name} have been audited.</span>
+              <span>All submitted deals for {activeProject?.name} have been reviewed.</span>
             </div>
           ) : (
             <div className="minimal-list">
@@ -103,8 +103,8 @@ export default function SupervisorOverview({
                     <div className="item-desc">{s.projectName} &bull; <span className="font-mono text-accent">{formatPKR(s.amount)}</span></div>
                   </div>
                   <div className="btn-group-sm">
-                    <button className="btn btn-success btn-sm" onClick={() => onApproveSale(s.id, 'Approved by Supervisor QA')}>Approve</button>
-                    <button className="btn btn-danger btn-sm" onClick={() => onRejectSale(s.id, 'Disqualified by Supervisor QA')}>Reject</button>
+                    <button className="btn btn-success btn-sm" onClick={() => onApproveSale(s.id, 'Approved by Supervisor Review')}>Approve</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => onRejectSale(s.id, 'Disqualified by Supervisor Review')}>Reject</button>
                   </div>
                 </div>
               ))}
@@ -115,7 +115,7 @@ export default function SupervisorOverview({
         {/* Today Shift Roster */}
         <div className="card">
           <div className="card-header">
-            <span className="card-title"><Users size={16} /> Agent Shift Attendance</span>
+            <span className="card-title">Agent Shift Attendance</span>
             <button className="text-btn" onClick={() => setActiveTab('team-attendance')}>Full Sheet</button>
           </div>
           <div className="roster-list-mini">
@@ -129,7 +129,7 @@ export default function SupervisorOverview({
                     <div className="font-bold text-xs">{agent.name}</div>
                     <div className="text-xs text-muted">{agent.designation}</div>
                   </div>
-                  <span className={`badge ${status === 'Present' ? 'badge-success' : status === 'Late' ? 'badge-warning' : 'badge-error'}`}>
+                  <span className={`badge ${statusBadgeClass(status)}`}>
                     {status}
                   </span>
                 </div>
@@ -138,6 +138,14 @@ export default function SupervisorOverview({
           </div>
         </div>
       </div>
+
+      {/* Sales Board */}
+      <div className="margin-top">
+        <SalesLeaderboard sales={sales} />
+      </div>
+
+      {/* Floating Team Messenger (bottom corner) */}
+      <DashboardMessenger currentUser={currentUser} users={users} onSendMessage={onSendMessage} />
 
       <style>{`
         .supervisor-overview-container { display: flex; flex-direction: column; }

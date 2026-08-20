@@ -1,0 +1,16 @@
+ALTER TABLE sales
+  ADD COLUMN address TEXT,
+  ADD COLUMN apt TEXT,
+  ADD COLUMN city TEXT,
+  ADD COLUMN state TEXT,
+  ADD COLUMN zip_code TEXT,
+  ADD COLUMN phone2 TEXT,
+  ADD COLUMN supplier_name TEXT,
+  ADD COLUMN electric_utility TEXT,
+  ADD COLUMN electric_account_type TEXT,
+  ADD COLUMN electric_account_number TEXT,
+  ADD COLUMN electric_rate TEXT,
+  ADD COLUMN gas_utility TEXT,
+  ADD COLUMN gas_account_type TEXT,
+  ADD COLUMN gas_account_number TEXT,
+  ADD COLUMN confirmation_number TEXT;

@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
-import { UserPlus, Trash2, Settings, X, Users as UsersIcon } from 'lucide-react';
+import { UserPlus, Trash2, Settings, X, Users as UsersIcon, DollarSign } from 'lucide-react';
+import { formatPKR } from '../../utils/currency';
 
 const ROLE_OPTIONS = ['Admin', 'Supervisor', 'Agent'];
 
-export default function TeamManagement({ currentUser, users, projects, onAddUser, onDeactivateUser, onUpdateUserCampaigns }) {
+export default function TeamManagement({ currentUser, users, projects, onAddUser, onDeactivateUser, onUpdateUserCampaigns, onUpdateBaseSalary }) {
   const isAdmin = currentUser.role === 'Admin';
   const isSupervisor = currentUser.role === 'Supervisor';
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingAccessFor, setEditingAccessFor] = useState(null);
+  const [editingSalaryFor, setEditingSalaryFor] = useState(null);
+  const [salaryValue, setSalaryValue] = useState('');
   const [error, setError] = useState('');
 
   const ownCampaignIds = currentUser.allowedCampaignIds || [];
@@ -21,11 +24,11 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
         (u.role === 'Agent' && (u.allowedCampaignIds || []).some(id => ownCampaignIds.includes(id)))
       );
 
-  const [formData, setFormData] = useState({ name: '', username: '', password: '', role: 'Agent', campaignIds: [] });
+  const [formData, setFormData] = useState({ name: '', username: '', password: '', role: 'Agent', campaignIds: [], baseSalaryPkr: '' });
   const [accessCampaignIds, setAccessCampaignIds] = useState([]);
 
   const openAddModal = () => {
-    setFormData({ name: '', username: '', password: '', role: isSupervisor ? 'Agent' : 'Agent', campaignIds: [] });
+    setFormData({ name: '', username: '', password: '', role: isSupervisor ? 'Agent' : 'Agent', campaignIds: [], baseSalaryPkr: '' });
     setError('');
     setShowAddModal(true);
   };
@@ -33,6 +36,11 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
   const openEditAccess = (user) => {
     setAccessCampaignIds(user.allowedCampaignIds || []);
     setEditingAccessFor(user);
+  };
+
+  const openEditSalary = (user) => {
+    setSalaryValue(String(user.baseSalaryPkr || 0));
+    setEditingSalaryFor(user);
   };
 
   const toggleCampaign = (campaignId, listSetter, list) => {
@@ -48,7 +56,8 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
         username: formData.username,
         password: formData.password,
         role: isAdmin ? formData.role : 'Agent',
-        campaignIds: formData.campaignIds
+        campaignIds: formData.campaignIds,
+        ...(isAdmin && formData.baseSalaryPkr ? { baseSalaryPkr: Number(formData.baseSalaryPkr) } : {})
       });
       setShowAddModal(false);
     } catch (err) {
@@ -64,6 +73,12 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
     e.preventDefault();
     await onUpdateUserCampaigns(editingAccessFor.id, accessCampaignIds);
     setEditingAccessFor(null);
+  };
+
+  const handleSaveSalary = async (e) => {
+    e.preventDefault();
+    await onUpdateBaseSalary(editingSalaryFor.id, Number(salaryValue) || 0);
+    setEditingSalaryFor(null);
   };
 
   const campaignNames = (ids) => (ids || [])
@@ -95,13 +110,14 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
               <th>Username</th>
               <th>Role</th>
               <th>Campaign Access</th>
+              {isAdmin && <th>Base Salary</th>}
               <th>Status</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody>
             {visibleUsers.length === 0 ? (
-              <tr><td colSpan="6" style={{ textAlign: 'center', padding: '1.5rem' }}>No team members yet.</td></tr>
+              <tr><td colSpan={isAdmin ? 7 : 6} style={{ textAlign: 'center', padding: '1.5rem' }}>No team members yet.</td></tr>
             ) : (
               visibleUsers.map(u => (
                 <tr key={u.id}>
@@ -109,12 +125,18 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
                   <td className="text-muted">{u.username}</td>
                   <td><span className={`badge ${u.role === 'Admin' ? 'badge-error' : u.role === 'Supervisor' ? 'badge-warning' : 'badge-neutral'}`}>{u.role}</span></td>
                   <td className="text-sm">{campaignNames(u.allowedCampaignIds)}</td>
+                  {isAdmin && <td className="font-mono text-sm">{formatPKR(u.baseSalaryPkr || 0)}</td>}
                   <td><span className={`badge ${u.status === 'Active' ? 'badge-success' : 'badge-neutral'}`}>{u.status}</span></td>
                   <td>
                     <div className="btn-group-sm">
                       {isAdmin && (
                         <button className="btn btn-secondary btn-sm" onClick={() => openEditAccess(u)} title="Edit campaign access">
                           <Settings size={13} /> Access
+                        </button>
+                      )}
+                      {isAdmin && (
+                        <button className="btn btn-secondary btn-sm" onClick={() => openEditSalary(u)} title="Edit base salary">
+                          <DollarSign size={13} /> Salary
                         </button>
                       )}
                       {u.id !== currentUser.id && u.status === 'Active' && (isAdmin || u.role === 'Agent') && (
@@ -157,11 +179,17 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
                 </div>
 
                 {isAdmin && (
-                  <div className="form-group">
-                    <label className="form-label">Role</label>
-                    <select className="form-select" value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value })}>
-                      {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
-                    </select>
+                  <div className="grid-2">
+                    <div className="form-group">
+                      <label className="form-label">Role</label>
+                      <select className="form-select" value={formData.role} onChange={e => setFormData({ ...formData, role: e.target.value })}>
+                        {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Base Salary (PKR)</label>
+                      <input type="number" className="form-input" placeholder="0" value={formData.baseSalaryPkr} onChange={e => setFormData({ ...formData, baseSalaryPkr: e.target.value })} />
+                    </div>
                   </div>
                 )}
 
@@ -204,7 +232,9 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
             <form onSubmit={handleSaveAccess}>
               <div className="modal-body">
                 <div className="agent-checkboxes-list">
-                  {projects.map(p => (
+                  {projects.length === 0 ? (
+                    <div className="text-subtle text-sm">No campaigns exist yet — create one from the Campaigns tab first.</div>
+                  ) : projects.map(p => (
                     <label key={p.id} className="agent-checkbox-item">
                       <input
                         type="checkbox"
@@ -219,6 +249,29 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
               <div className="modal-footer">
                 <button type="button" className="btn btn-secondary" onClick={() => setEditingAccessFor(null)}>Cancel</button>
                 <button type="submit" className="btn btn-primary">Save Access</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editingSalaryFor && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <span className="modal-title">Edit Base Salary — {editingSalaryFor.name}</span>
+              <button className="icon-btn" onClick={() => setEditingSalaryFor(null)}><X size={18} /></button>
+            </div>
+            <form onSubmit={handleSaveSalary}>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label className="form-label">Base Salary (PKR / month)</label>
+                  <input type="number" className="form-input" value={salaryValue} onChange={e => setSalaryValue(e.target.value)} autoFocus />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setEditingSalaryFor(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Save Salary</button>
               </div>
             </form>
           </div>

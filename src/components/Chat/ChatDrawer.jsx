@@ -1,16 +1,30 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Hash, Shield, Bell, X, Minus, MessageSquare } from 'lucide-react';
+import React, { useMemo, useState, useRef, useEffect } from 'react';
+import { Send, X, Minus, MessageSquare } from 'lucide-react';
+import { dmChannelId, isDmChannel } from '../../utils/chatChannels';
+import { fetchMessageGroups } from '../../api/messageGroups';
 
-const CHANNELS = [
-  { id: 'announcements', label: 'Announcements', icon: Bell, accent: 'warning' },
-  { id: 'general-lounge', label: 'Sales Lounge', icon: Hash, accent: 'accent' },
-  { id: 'qa-support', label: 'QA Support', icon: Shield, accent: 'success' }
-];
-
-export default function ChatDrawer({ isOpen, currentUser, messages, onSendMessage, onClose, onMinimize }) {
-  const [activeChannel, setActiveChannel] = useState('announcements');
+export default function ChatDrawer({ isOpen, currentUser, users = [], messages, onSendMessage, onClose, onMinimize }) {
+  const [myGroups, setMyGroups] = useState([]);
+  const [activeChannel, setActiveChannel] = useState('');
+  const [dmPartnerId, setDmPartnerId] = useState('');
   const [textInput, setTextInput] = useState('');
+  const [sendError, setSendError] = useState('');
   const messagesEndRef = useRef(null);
+
+  const dmContacts = useMemo(
+    () => users.filter(u => u.id !== currentUser.id && u.status === 'Active'),
+    [users, currentUser.id]
+  );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    fetchMessageGroups()
+      .then(groups => {
+        setMyGroups(groups);
+        setActiveChannel(prev => prev || groups[0]?.id || '');
+      })
+      .catch(err => console.error('Failed to load message groups', err));
+  }, [isOpen]);
 
   const filteredMessages = messages.filter(m => m.channel === activeChannel);
 
@@ -22,9 +36,25 @@ export default function ChatDrawer({ isOpen, currentUser, messages, onSendMessag
 
   if (!isOpen) return null;
 
-  const handleSend = (e) => {
+  const selectChannel = (channelId) => {
+    setActiveChannel(channelId);
+    setDmPartnerId('');
+    setSendError('');
+  };
+
+  const selectDmPartner = (userId) => {
+    setDmPartnerId(userId);
+    setSendError('');
+    if (userId) setActiveChannel(dmChannelId(currentUser.id, userId));
+  };
+
+  const handleSend = async (e) => {
     e.preventDefault();
     if (!textInput.trim()) return;
+    if (!activeChannel) {
+      setSendError('Pick a group or start a Direct Message before sending.');
+      return;
+    }
     const newMsg = {
       id: `msg_${Date.now()}`,
       channel: activeChannel,
@@ -32,13 +62,22 @@ export default function ChatDrawer({ isOpen, currentUser, messages, onSendMessag
       senderName: currentUser.name,
       senderRole: currentUser.role,
       text: textInput,
-      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      ...(isDmChannel(activeChannel) ? { recipientId: dmPartnerId } : {})
     };
-    onSendMessage(newMsg);
+    setSendError('');
+    try {
+      await onSendMessage(newMsg);
+    } catch (err) {
+      setSendError(err.message || 'Failed to send message.');
+      return;
+    }
     setTextInput('');
   };
 
-  const activeChannelMeta = CHANNELS.find(c => c.id === activeChannel);
+  const activeLabel = isDmChannel(activeChannel)
+    ? dmContacts.find(u => u.id === dmPartnerId)?.name || 'Direct Message'
+    : myGroups.find(g => g.id === activeChannel)?.name || '';
 
   return (
     <div className="chat-drawer" role="dialog" aria-label="Team chat">
@@ -58,30 +97,50 @@ export default function ChatDrawer({ isOpen, currentUser, messages, onSendMessag
       </div>
 
       <div className="chat-channel-tabs" role="tablist" aria-label="Chat channels">
-        {CHANNELS.map(ch => {
-          const Icon = ch.icon;
-          const isActive = activeChannel === ch.id;
+        {myGroups.length === 0 && (
+          <span className="chat-no-groups-hint">No group channels yet — ask your Admin/Supervisor to add you.</span>
+        )}
+        {myGroups.map(g => {
+          const isActive = !isDmChannel(activeChannel) && activeChannel === g.id;
           return (
             <button
-              key={ch.id}
+              key={g.id}
               role="tab"
               aria-selected={isActive}
               className={`chat-channel-tab ${isActive ? 'active' : ''}`}
-              onClick={() => setActiveChannel(ch.id)}
+              onClick={() => selectChannel(g.id)}
             >
-              <Icon size={14} />
-              <span>{ch.label}</span>
+              <span>{g.name}</span>
             </button>
           );
         })}
       </div>
 
+      <div className="chat-dm-row">
+        <select
+          className="form-select chat-dm-select"
+          value={dmPartnerId}
+          onChange={(e) => selectDmPartner(e.target.value)}
+        >
+          <option value="">Direct Message…</option>
+          {dmContacts.map(u => (
+            <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+          ))}
+        </select>
+      </div>
+
       <div className="chat-messages-body" aria-live="polite" aria-relevant="additions">
-        {filteredMessages.length === 0 ? (
+        {!activeChannel ? (
+          <div className="empty-state">
+            <MessageSquare size={26} className="empty-state-icon" />
+            <div className="empty-state-title">No conversation selected</div>
+            <div className="empty-state-text">Pick a group or start a Direct Message.</div>
+          </div>
+        ) : filteredMessages.length === 0 ? (
           <div className="empty-state">
             <MessageSquare size={26} className="empty-state-icon" />
             <div className="empty-state-title">No messages yet</div>
-            <div className="empty-state-text">Be the first to post in {activeChannelMeta.label}.</div>
+            <div className="empty-state-text">Be the first to post in {activeLabel}.</div>
           </div>
         ) : (
           filteredMessages.map(msg => {
@@ -106,13 +165,15 @@ export default function ChatDrawer({ isOpen, currentUser, messages, onSendMessag
         <div ref={messagesEndRef} />
       </div>
 
+      {sendError && <div className="chat-send-error">{sendError}</div>}
+
       <form className="chat-input-row" onSubmit={handleSend}>
-        <label htmlFor="chat-message-input" className="sr-only">Message {activeChannelMeta.label}</label>
+        <label htmlFor="chat-message-input" className="sr-only">Message {activeLabel}</label>
         <input
           id="chat-message-input"
           type="text"
           className="form-input"
-          placeholder={`Message ${activeChannelMeta.label}...`}
+          placeholder={`Message ${activeLabel}...`}
           value={textInput}
           onChange={(e) => setTextInput(e.target.value)}
           autoComplete="off"
@@ -161,10 +222,18 @@ export default function ChatDrawer({ isOpen, currentUser, messages, onSendMessag
           display: flex;
           gap: 0.35rem;
           padding: 0.65rem 0.85rem;
-          border-bottom: 1px solid var(--border-color);
           flex-shrink: 0;
           overflow-x: auto;
         }
+
+        .chat-dm-row {
+          padding: 0 0.85rem 0.65rem 0.85rem;
+          border-bottom: 1px solid var(--border-color);
+          flex-shrink: 0;
+        }
+        .chat-dm-select { width: 100%; }
+        .chat-no-groups-hint { font-size: 0.75rem; color: var(--text-subtle); padding: 0.3rem 0; }
+        .chat-send-error { font-size: 0.75rem; color: var(--status-error); padding: 0 0.85rem 0.5rem; }
 
         .chat-channel-tab {
           display: flex;

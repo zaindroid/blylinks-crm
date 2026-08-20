@@ -20,3 +20,7 @@ export function checkBootstrapStatus() {
 export function logout() {
   setToken(null);
 }
+
+export function changePassword(currentPassword, newPassword) {
+  return apiFetch('/auth/change-password', { method: 'PATCH', body: { currentPassword, newPassword } });
+}

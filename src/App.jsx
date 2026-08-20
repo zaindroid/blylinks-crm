@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import AgentOverview from './components/AgentPortal/AgentOverview';
@@ -21,19 +21,22 @@ import TeamManagement from './components/Shared/TeamManagement';
 import TaskNotificationDrawer from './components/TaskNotificationDrawer';
 import ChatDrawer from './components/Chat/ChatDrawer';
 import AuthModal from './components/Auth/AuthModal';
+import SaleCelebration from './components/Shared/SaleCelebration';
 import { requestNotificationPermission, showDesktopNotification } from './utils/notifications';
+import { randomMotivationalQuote } from './utils/motivationalQuotes';
 
 import { getToken, setToken, decodeToken } from './api/client';
 import { logout as apiLogout } from './api/auth';
-import { fetchUsers, createUser, deactivateUser, updateUserCampaigns } from './api/users';
+import { fetchUsers, createUser, deactivateUser, updateUserCampaigns, updateBaseSalary } from './api/users';
 import { fetchCampaigns, createCampaign, updateCampaign, toggleCampaignStatus } from './api/campaigns';
 import { fetchSales, submitSale, approveSale, rejectSale } from './api/sales';
 import { fetchAttendance, clockIn, clockOut, updateAttendanceStatus } from './api/attendance';
 import { fetchTargets, updateTarget } from './api/targets';
 import { fetchCallbacks, addCallback, completeCallback } from './api/callbacks';
 import { fetchLeads, addLead, updateLeadStatus } from './api/leads';
-import { fetchPayroll, togglePaymentStatus } from './api/payroll';
+import { fetchPayroll, togglePaymentStatus, generatePayroll, updatePayrollAdjustments } from './api/payroll';
 import { fetchMessages, sendMessage } from './api/messages';
+import { fetchMessageGroups, createMessageGroup, updateMessageGroupMembers, deleteMessageGroup } from './api/messageGroups';
 import { fetchKbArticles } from './api/kb';
 import { fetchTickets, addTicket, resolveTicket } from './api/tickets';
 
@@ -46,6 +49,8 @@ export default function App() {
 
   // Core Data States — populated from the API once authenticated
   const [sales, setSales] = useState([]);
+  const salesRef = useRef([]);
+  useEffect(() => { salesRef.current = sales; }, [sales]);
   const [projects, setProjects] = useState([]);
   const [attendanceLogs, setAttendanceLogs] = useState([]);
   const [targets, setTargets] = useState([]);
@@ -53,6 +58,7 @@ export default function App() {
   const [leads, setLeads] = useState([]);
   const [payroll, setPayroll] = useState([]);
   const [messages, setMessages] = useState([]);
+  const [messageGroups, setMessageGroups] = useState([]);
   const [kbArticles, setKbArticles] = useState([]);
   const [tickets, setTickets] = useState([]);
 
@@ -63,6 +69,7 @@ export default function App() {
   const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [latestNotification, setLatestNotification] = useState(null);
+  const [celebrationQuote, setCelebrationQuote] = useState(null);
 
   // Chat drawer state: 'closed' | 'open' | 'minimized'
   const [chatPanelState, setChatPanelState] = useState('closed');
@@ -106,9 +113,10 @@ export default function App() {
     let cancelled = false;
     (async () => {
       try {
-        const [users, campaignsData, salesData, attendanceData, targetsData, callbacksData, leadsData, payrollData, messagesData, kbData, ticketsData] = await Promise.all([
+        const [users, campaignsData, salesData, attendanceData, targetsData, callbacksData, leadsData, payrollData, messagesData, groupsData, kbData, ticketsData] = await Promise.all([
           fetchUsers(), fetchCampaigns(), fetchSales(), fetchAttendance(), fetchTargets(),
-          fetchCallbacks(), fetchLeads(), fetchPayroll(), fetchMessages(), fetchKbArticles(), fetchTickets()
+          fetchCallbacks(), fetchLeads(), fetchPayroll(), fetchMessages(),
+          fetchMessageGroups({ all: currentUser.role === 'Admin' }), fetchKbArticles(), fetchTickets()
         ]);
         if (cancelled) return;
         setAllUsers(users);
@@ -120,6 +128,7 @@ export default function App() {
         setLeads(leadsData);
         setPayroll(payrollData);
         setMessages(messagesData);
+        setMessageGroups(groupsData);
         setKbArticles(kbData);
         setTickets(ticketsData);
       } catch (err) {
@@ -127,6 +136,58 @@ export default function App() {
       }
     })();
     return () => { cancelled = true; };
+  }, [currentUser?.id]);
+
+  // Background sync: other users' actions (approvals, payroll, attendance edits, etc.)
+  // don't push to this tab on their own, so poll the shared data every few seconds
+  // and surface a notification if one of *my* sales just got reviewed.
+  useEffect(() => {
+    if (!currentUser) return;
+    let cancelled = false;
+
+    const interval = setInterval(async () => {
+      try {
+        const [salesData, campaignsData, attendanceData, payrollData, callbacksData, leadsData, ticketsData] = await Promise.all([
+          fetchSales(), fetchCampaigns(), fetchAttendance(), fetchPayroll(), fetchCallbacks(), fetchLeads(), fetchTickets()
+        ]);
+        if (cancelled) return;
+
+        if (currentUser.role === 'Agent') {
+          const prevSales = salesRef.current;
+          for (const freshSale of salesData) {
+            if (freshSale.agentId !== currentUser.id) continue;
+            const prior = prevSales.find(s => s.id === freshSale.id);
+            if (prior && prior.status === 'Pending' && freshSale.status !== 'Pending') {
+              const notif = {
+                title: freshSale.status === 'Approved' ? 'Sale Approved' : 'Sale Rejected',
+                message: `${freshSale.id} for ${freshSale.customerName} was ${freshSale.status.toLowerCase()} by ${freshSale.verifiedBy || 'a reviewer'}`,
+                time: 'Just now',
+                read: false,
+                type: freshSale.status === 'Approved' ? 'success' : 'alert'
+              };
+              setNotifications(n => [notif, ...n]);
+              setLatestNotification(notif);
+              showDesktopNotification(notif.title, notif.message);
+            }
+          }
+        }
+        setSales(salesData);
+
+        setProjects(campaignsData);
+        setAttendanceLogs(attendanceData);
+        setPayroll(payrollData);
+        setCallbacks(callbacksData);
+        setLeads(leadsData);
+        setTickets(ticketsData);
+      } catch (err) {
+        console.error('Background sync failed', err);
+      }
+    }, 8000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [currentUser?.id]);
 
   // Ensure selected campaign is allowed for logged in user
@@ -188,7 +249,7 @@ export default function App() {
   const myOpenAttendanceLog = currentUser
     ? attendanceLogs.find(l => l.agentId === currentUser.id && l.clockOut === '--:--')
     : null;
-  const agentAttendanceStatus = myOpenAttendanceLog ? 'Present' : 'Clocked Out';
+  const agentAttendanceStatus = myOpenAttendanceLog ? myOpenAttendanceLog.status : 'Clocked Out';
 
   // Clock Actions
   const handleClockAction = async (action) => {
@@ -209,15 +270,11 @@ export default function App() {
     try {
       const saved = await submitSale({
         campaignId: selectedCampaignId,
-        customerName: newSale.customerName,
-        phone: newSale.phone,
-        email: newSale.email,
-        amount: newSale.amount,
-        agentNotes: newSale.agentNotes
+        ...newSale
       });
       setSales(await fetchSales());
       const notif = {
-        title: 'QA Audit Required',
+        title: 'Administrative Review Required',
         message: `${saved.agentName} logged deal ${saved.id} (Rs. ${saved.amount.toLocaleString()})`,
         time: 'Just now',
         read: false,
@@ -226,6 +283,7 @@ export default function App() {
       setNotifications([notif, ...notifications]);
       setLatestNotification(notif);
       showDesktopNotification(notif.title, notif.message);
+      setCelebrationQuote(randomMotivationalQuote());
     } catch (err) {
       console.error('Failed to submit sale', err);
     }
@@ -297,6 +355,21 @@ export default function App() {
     setPayroll(await fetchPayroll());
   };
 
+  const handleGeneratePayroll = async (month) => {
+    await generatePayroll(month);
+    setPayroll(await fetchPayroll());
+  };
+
+  const handleUpdatePayrollAdjustments = async (payrollId, adjustments) => {
+    await updatePayrollAdjustments(payrollId, adjustments);
+    setPayroll(await fetchPayroll());
+  };
+
+  const handleUpdateBaseSalary = async (userId, baseSalaryPkr) => {
+    await updateBaseSalary(userId, baseSalaryPkr);
+    setAllUsers(await fetchUsers());
+  };
+
   // Team / User Handlers
   const handleAddUser = async (payload) => {
     await createUser(payload);
@@ -338,23 +411,28 @@ export default function App() {
   };
 
   // Messaging Handler
+  // Sending a message is your own action -- it must never generate a notification
+  // back to yourself. Notifications for incoming messages from other people are
+  // handled separately, by the messenger widgets that poll for them.
   const handleSendMessage = async (newMsg) => {
-    await sendMessage(newMsg.channel, newMsg.text);
+    await sendMessage(newMsg.channel, newMsg.text, newMsg.recipientId);
     setMessages(await fetchMessages());
-    const notif = {
-      title: `New Message in ${newMsg.channel}`,
-      message: `${currentUser.name}: "${newMsg.text.slice(0, 35)}..."`,
-      time: 'Just now',
-      read: false,
-      type: 'info'
-    };
-    setNotifications([notif, ...notifications]);
-    setLatestNotification(notif);
-    showDesktopNotification(notif.title, notif.message);
+  };
 
-    if (chatPanelState !== 'open') {
-      setChatUnreadCount(count => count + 1);
-    }
+  // Group Handlers (Admin/Supervisor manage who can see which channels)
+  const handleCreateMessageGroup = async (payload) => {
+    await createMessageGroup(payload);
+    setMessageGroups(await fetchMessageGroups({ all: currentUser.role === 'Admin' }));
+  };
+
+  const handleUpdateMessageGroupMembers = async (groupId, memberIds) => {
+    await updateMessageGroupMembers(groupId, memberIds);
+    setMessageGroups(await fetchMessageGroups({ all: currentUser.role === 'Admin' }));
+  };
+
+  const handleDeleteMessageGroup = async (groupId) => {
+    await deleteMessageGroup(groupId);
+    setMessageGroups(await fetchMessageGroups({ all: currentUser.role === 'Admin' }));
   };
 
   // Ticket Handlers
@@ -415,6 +493,7 @@ export default function App() {
             currentUser.role === 'Agent' ? (
               <AgentOverview
                 currentUser={currentUser}
+                users={allUsers}
                 sales={sales}
                 targets={targets}
                 callbacks={callbacks}
@@ -427,9 +506,11 @@ export default function App() {
                 selectedCampaignId={selectedCampaignId}
                 projects={projects}
                 onOpenChat={handleOpenChat}
+                onSendMessage={handleSendMessage}
               />
             ) : currentUser.role === 'Supervisor' ? (
               <SupervisorOverview
+                currentUser={currentUser}
                 sales={sales}
                 users={allUsers}
                 attendanceLogs={attendanceLogs}
@@ -438,9 +519,11 @@ export default function App() {
                 setActiveTab={setActiveTab}
                 selectedCampaignId={selectedCampaignId}
                 projects={projects}
+                onSendMessage={handleSendMessage}
               />
             ) : (
               <AdminOverview
+                currentUser={currentUser}
                 sales={sales}
                 users={allUsers}
                 projects={projects}
@@ -449,6 +532,7 @@ export default function App() {
                 onRejectSale={handleRejectSale}
                 setActiveTab={setActiveTab}
                 selectedCampaignId={selectedCampaignId}
+                onSendMessage={handleSendMessage}
               />
             )
           )}
@@ -506,6 +590,18 @@ export default function App() {
               onAddUser={handleAddUser}
               onDeactivateUser={handleDeactivateUser}
               onUpdateUserCampaigns={handleUpdateUserCampaigns}
+              onUpdateBaseSalary={handleUpdateBaseSalary}
+            />
+          )}
+
+          {activeTab === 'message-groups' && (currentUser.role === 'Admin' || currentUser.role === 'Supervisor') && (
+            <MessageGroupManagement
+              currentUser={currentUser}
+              users={allUsers}
+              groups={messageGroups}
+              onCreateGroup={handleCreateMessageGroup}
+              onUpdateMembers={handleUpdateMessageGroupMembers}
+              onDeleteGroup={handleDeleteMessageGroup}
             />
           )}
 
@@ -521,6 +617,8 @@ export default function App() {
             <AdminPayroll
               payroll={payroll}
               onTogglePaymentStatus={handleTogglePaymentStatus}
+              onGeneratePayroll={handleGeneratePayroll}
+              onUpdatePayrollAdjustments={handleUpdatePayrollAdjustments}
             />
           )}
 
@@ -575,9 +673,14 @@ export default function App() {
         isOpen={isSaleModalOpen}
         onClose={() => setIsSaleModalOpen(false)}
         projects={projects}
+        selectedCampaignId={selectedCampaignId}
         currentUser={currentUser}
         onSubmitSale={handleSubmitSale}
       />
+
+      {celebrationQuote && (
+        <SaleCelebration quote={celebrationQuote} onDone={() => setCelebrationQuote(null)} />
+      )}
 
       {/* Floating Notification Toast & Minimizable Task Drawer */}
       <TaskNotificationDrawer
@@ -595,6 +698,7 @@ export default function App() {
       <ChatDrawer
         isOpen={chatPanelState === 'open'}
         currentUser={currentUser}
+        users={allUsers}
         messages={messages}
         onSendMessage={handleSendMessage}
         onClose={handleCloseChat}

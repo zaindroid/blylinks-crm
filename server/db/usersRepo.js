@@ -12,7 +12,8 @@ function reshapeUser(row, allowedCampaignIds) {
     allowedCampaignIds,
     status: row.status,
     avatar: row.avatar,
-    shift: row.shift
+    shift: row.shift,
+    baseSalaryPkr: row.base_salary_pkr !== undefined ? Number(row.base_salary_pkr) : 0
   };
 }
 

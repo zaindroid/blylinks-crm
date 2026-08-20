@@ -10,8 +10,10 @@ import {
   AlertCircle,
   Briefcase,
   LogOut,
-  MessageSquare
+  MessageSquare,
+  KeyRound
 } from 'lucide-react';
+import ChangePasswordModal from './Auth/ChangePasswordModal';
 
 export default function Navbar({
   currentUser,
@@ -30,6 +32,7 @@ export default function Navbar({
 }) {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   const unreadCount = notifications.filter(n => !n.read).length;
 
@@ -154,6 +157,10 @@ export default function Navbar({
                 </div>
               </div>
 
+              <button className="user-switch-item" onClick={() => { setShowChangePassword(true); setShowUserDropdown(false); }}>
+                <KeyRound size={14} /> Change Password
+              </button>
+
               <button className="user-switch-item text-danger" onClick={onLogout}>
                 <LogOut size={14} /> Log Out
               </button>
@@ -161,6 +168,8 @@ export default function Navbar({
           )}
         </div>
       </div>
+
+      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
 
       <style>{`
         .navbar-header {

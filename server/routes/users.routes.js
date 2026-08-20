@@ -3,6 +3,8 @@ const bcrypt = require('bcrypt');
 const pool = require('../db/pool');
 const asyncHandler = require('../utils/asyncHandler');
 const { requireRole } = require('../middleware/auth');
+const genId = require('../utils/genId');
+const { passwordError } = require('../utils/validatePassword');
 const {
   listPublicUsers, toPublicUser, findUserRowByUsername, findUserRowById,
   getAllowedCampaignIds, shareCampaignAccess
@@ -26,10 +28,14 @@ router.post('/', asyncHandler(async (req, res) => {
     return res.status(403).json({ error: 'Only Admins and Supervisors can add users' });
   }
 
-  const { name, username, password } = req.body;
+  const { name, username, password, baseSalaryPkr } = req.body;
   let { role, campaignIds = [] } = req.body;
   if (!name || !username || !password) {
     return res.status(400).json({ error: 'name, username and password are required' });
+  }
+  const pwError = passwordError(password);
+  if (pwError) {
+    return res.status(400).json({ error: pwError });
   }
 
   if (req.user.role === 'Supervisor') {
@@ -48,18 +54,19 @@ router.post('/', asyncHandler(async (req, res) => {
     return res.status(409).json({ error: 'This username is already taken' });
   }
 
-  const id = `usr_${role.toLowerCase()}_${Date.now()}`;
+  const id = genId(`usr_${role.toLowerCase()}`);
   const passwordHash = await bcrypt.hash(password, 10);
 
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query(
-      `INSERT INTO users (id, name, username, password_hash, role, designation, status, avatar)
-       VALUES ($1,$2,$3,$4,$5,$6,'Active',$7)`,
+      `INSERT INTO users (id, name, username, password_hash, role, designation, status, avatar, base_salary_pkr)
+       VALUES ($1,$2,$3,$4,$5,$6,'Active',$7,$8)`,
       [
         id, name, username, passwordHash, role, DESIGNATIONS[role],
-        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'
+        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
+        req.user.role === 'Admin' && baseSalaryPkr ? Number(baseSalaryPkr) : 0
       ]
     );
     for (const campaignId of campaignIds) {
@@ -100,6 +107,21 @@ router.patch('/:id/campaigns', requireRole('Admin'), asyncHandler(async (req, re
   }
 
   res.json(await toPublicUser(target));
+}));
+
+router.patch('/:id/base-salary', requireRole('Admin'), asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { baseSalaryPkr } = req.body;
+  if (baseSalaryPkr === undefined || Number.isNaN(Number(baseSalaryPkr))) {
+    return res.status(400).json({ error: 'baseSalaryPkr must be a number' });
+  }
+
+  const target = await findUserRowById(id);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+
+  await pool.query('UPDATE users SET base_salary_pkr = $2 WHERE id = $1', [id, Number(baseSalaryPkr)]);
+  const updated = await findUserRowById(id);
+  res.json(await toPublicUser(updated));
 }));
 
 router.delete('/:id', asyncHandler(async (req, res) => {

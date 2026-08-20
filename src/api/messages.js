@@ -5,6 +5,6 @@ export function fetchMessages(channel) {
   return apiFetch(`/messages${query}`);
 }
 
-export function sendMessage(channel, text) {
-  return apiFetch('/messages', { method: 'POST', body: { channel, text } });
+export function sendMessage(channel, text, recipientId) {
+  return apiFetch('/messages', { method: 'POST', body: { channel, text, recipientId } });
 }

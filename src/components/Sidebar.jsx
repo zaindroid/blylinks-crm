@@ -15,7 +15,8 @@ import {
   UserCheck,
   UserPlus,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  MessageSquare
 } from 'lucide-react';
 
 const LOGO_SRC = '/blylinks-logo.png';
@@ -41,10 +42,11 @@ function getNavSections(role, pendingQaCount) {
     sections.push({
       title: 'Operations',
       items: [
-        { id: 'qa-approval', label: 'QA Audit', icon: CheckSquare, badge: pendingQaCount },
+        { id: 'qa-approval', label: 'Administrative Review', icon: CheckSquare, badge: pendingQaCount },
         { id: 'leads', label: 'Lead CRM', icon: Users },
         { id: 'team-attendance', label: 'Team Attendance', icon: UserCheck },
-        { id: 'team', label: 'Team & Access', icon: UserPlus }
+        { id: 'team', label: 'Team & Access', icon: UserPlus },
+        { id: 'message-groups', label: 'Message Groups', icon: MessageSquare }
       ]
     });
   }

@@ -1,29 +1,35 @@
 import React, { useState } from 'react';
-import { 
-  DollarSign, 
-  Users, 
-  CheckCircle, 
-  Clock, 
-  AlertTriangle, 
-  TrendingUp, 
-  Briefcase, 
-  ChevronRight,
+import {
+  CheckCircle,
+  Clock,
+  Briefcase,
   Settings,
   X,
   FileSpreadsheet,
   Target
 } from 'lucide-react';
 import { formatPKR } from '../../utils/currency';
+import SalesLeaderboard from '../Shared/SalesLeaderboard';
+import DashboardMessenger from '../Shared/DashboardMessenger';
 
-export default function AdminOverview({ 
-  sales, 
-  users, 
-  projects, 
-  attendanceLogs, 
-  onApproveSale, 
-  onRejectSale, 
+function isToday(isoDate) {
+  if (!isoDate) return false;
+  const d = new Date(isoDate);
+  const now = new Date();
+  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+}
+
+export default function AdminOverview({
+  currentUser,
+  sales,
+  users,
+  projects,
+  attendanceLogs,
+  onApproveSale,
+  onRejectSale,
   setActiveTab,
-  selectedCampaignId
+  selectedCampaignId,
+  onSendMessage
 }) {
   const [showAdvancedModal, setShowAdvancedModal] = useState(false);
 
@@ -40,6 +46,17 @@ export default function AdminOverview({
 
   const assignedAgentsCount = activeProject?.assignedAgentIds?.length || users.filter(u => u.role === 'Agent').length;
 
+  // Sales Today by Campaign (all campaigns, approved sales made today)
+  const salesTodayByCampaign = projects.map(p => {
+    const todaysApproved = sales.filter(s => s.campaignId === p.id && s.status === 'Approved' && isToday(s.saleDateIso));
+    return {
+      id: p.id,
+      name: p.name,
+      count: todaysApproved.length,
+      revenue: todaysApproved.reduce((sum, s) => sum + Number(s.amount), 0)
+    };
+  });
+
   return (
     <div className="admin-overview-container">
       {/* Top Header */}
@@ -50,7 +67,7 @@ export default function AdminOverview({
         </div>
         <div className="page-header-actions">
           <button className="btn btn-primary" onClick={() => setActiveTab('qa-approval')}>
-            <CheckCircle size={15} /> QA Audit Queue ({pendingSales.length})
+            <CheckCircle size={15} /> Administrative Review Queue ({pendingSales.length})
           </button>
           <button className="btn btn-secondary" onClick={() => setActiveTab('team-attendance')}>
             <Clock size={15} /> Shift Roster
@@ -64,43 +81,42 @@ export default function AdminOverview({
       {/* 4 Visual KPI Cards (PKR Currency) */}
       <div className="kpi-grid">
         <div className="kpi-card">
-          <div className="kpi-head"><span>Campaign Sales Revenue</span><div className="kpi-icon"><DollarSign size={16} /></div></div>
+          <div className="kpi-head"><span>Campaign Sales Revenue</span></div>
           <div className="kpi-value">{formatPKR(totalRevenuePkr)}</div>
           <div className="kpi-sub"><span className="text-success">{approvedSales.length} Approved Deals</span></div>
         </div>
 
         <div className="kpi-card">
-          <div className="kpi-head"><span>Pending QA Audit</span><div className="kpi-icon"><Clock size={16} /></div></div>
+          <div className="kpi-head"><span>Pending Review</span></div>
           <div className="kpi-value">{pendingSales.length}</div>
-          <div className="kpi-sub"><span className="text-warning">Awaiting Audit</span></div>
+          <div className="kpi-sub"><span className="text-warning">Awaiting Review</span></div>
         </div>
 
         <div className="kpi-card">
-          <div className="kpi-head"><span>QA Approval Rate</span><div className="kpi-icon"><TrendingUp size={16} /></div></div>
+          <div className="kpi-head"><span>Approval Rate</span></div>
           <div className="kpi-value">{approvalRate}%</div>
           <div className="kpi-sub"><span>{totalSubmissions} Campaign Submissions</span></div>
         </div>
 
         <div className="kpi-card">
-          <div className="kpi-head"><span>Assigned Agents</span><div className="kpi-icon"><Users size={16} /></div></div>
+          <div className="kpi-head"><span>Assigned Agents</span></div>
           <div className="kpi-value">{assignedAgentsCount}</div>
           <div className="kpi-sub"><span>Allowed Access</span></div>
         </div>
       </div>
 
-      {/* 2 Clean Cards: QA Audit Queue & Active Campaign Details */}
+      {/* 2 Clean Cards: Administrative Review Queue & Active Campaign Details */}
       <div className="grid-2">
-        {/* Urgent Pending QA Audit Queue */}
+        {/* Urgent Pending Administrative Review Queue */}
         <div className="card">
           <div className="card-header">
-            <span className="card-title"><AlertTriangle size={16} className="text-warning" /> Urgent QA Audit Queue ({pendingSales.length})</span>
+            <span className="card-title">Urgent Administrative Review Queue ({pendingSales.length})</span>
             <button className="text-btn" onClick={() => setActiveTab('qa-approval')}>View All</button>
           </div>
 
           {pendingSales.length === 0 ? (
             <div className="empty-qa-box">
-              <CheckCircle size={16} className="text-success" />
-              <span>All submitted deals for {activeProject?.name} have been audited.</span>
+              <span>All submitted deals for {activeProject?.name} have been reviewed.</span>
             </div>
           ) : (
             <div className="minimal-list">
@@ -111,8 +127,8 @@ export default function AdminOverview({
                     <div className="item-desc">{s.projectName} &bull; <span className="font-mono text-accent">{formatPKR(s.amount)}</span></div>
                   </div>
                   <div className="btn-group-sm">
-                    <button className="btn btn-success btn-sm" onClick={() => onApproveSale(s.id, 'Approved by QA Operations')}>Approve</button>
-                    <button className="btn btn-danger btn-sm" onClick={() => onRejectSale(s.id, 'Disqualified by QA Audit')}>Reject</button>
+                    <button className="btn btn-success btn-sm" onClick={() => onApproveSale(s.id, 'Approved by Administrative Review')}>Approve</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => onRejectSale(s.id, 'Disqualified by Administrative Review')}>Reject</button>
                   </div>
                 </div>
               ))}
@@ -123,7 +139,7 @@ export default function AdminOverview({
         {/* Campaign Progress */}
         <div className="card">
           <div className="card-header">
-            <span className="card-title"><Briefcase size={16} className="text-blue" /> Campaign Status Summary</span>
+            <span className="card-title">Campaign Status Summary</span>
             <button className="text-btn" onClick={() => setActiveTab('projects')}>Manage</button>
           </div>
           <div className="minimal-list">
@@ -142,6 +158,35 @@ export default function AdminOverview({
           </div>
         </div>
       </div>
+
+      {/* Sales Today by Campaign & Sales Board */}
+      <div className="grid-2">
+        <div className="card">
+          <div className="card-header">
+            <span className="card-title">Sales Today by Campaign</span>
+          </div>
+          <div className="minimal-list">
+            {salesTodayByCampaign.every(c => c.count === 0) ? (
+              <div className="empty-state-sm">No approved sales logged today yet.</div>
+            ) : (
+              salesTodayByCampaign.map(c => (
+                <div key={c.id} className="minimal-list-item">
+                  <div>
+                    <div className="item-title">{c.name}</div>
+                    <div className="item-desc">{c.count} sale{c.count === 1 ? '' : 's'}</div>
+                  </div>
+                  <span className="font-mono text-accent">{formatPKR(c.revenue)}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+
+        <SalesLeaderboard sales={sales} />
+      </div>
+
+      {/* Floating Team Messenger (bottom corner) */}
+      <DashboardMessenger currentUser={currentUser} users={users} onSendMessage={onSendMessage} />
 
       {/* Advanced Management Modal */}
       {showAdvancedModal && (
@@ -189,6 +234,7 @@ export default function AdminOverview({
         .admin-overview-container { display: flex; flex-direction: column; }
         .empty-qa-box { display: flex; align-items: center; gap: 0.5rem; padding: 0.85rem; background: var(--status-success-bg); border: 1px solid var(--status-success-border); border-radius: var(--radius-sm); color: var(--status-success); font-size: 0.8rem; }
         .minimal-list { display: flex; flex-direction: column; gap: 0.55rem; }
+        .empty-state-sm { font-size: 0.8rem; color: var(--text-subtle); text-align: center; padding: 0.75rem 0; }
         .minimal-list-item { display: flex; align-items: center; justify-content: space-between; padding: 0.6rem 0.75rem; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); }
         .item-title { font-size: 0.825rem; font-weight: 600; }
         .item-desc { font-size: 0.725rem; color: var(--text-subtle); }

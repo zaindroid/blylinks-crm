@@ -5,6 +5,7 @@ const logger = require('./logger');
 const config = require('./config');
 const errorHandler = require('./middleware/errorHandler');
 const { requireAuth } = require('./middleware/auth');
+const { helmetMiddleware, authLimiter, apiLimiter } = require('./middleware/security');
 const healthRoutes = require('./routes/health');
 const openapiSpec = require('./openapi.json');
 
@@ -18,6 +19,7 @@ const callbacksRoutes = require('./routes/callbacks.routes');
 const leadsRoutes = require('./routes/leads.routes');
 const payrollRoutes = require('./routes/payroll.routes');
 const messagesRoutes = require('./routes/messages.routes');
+const messageGroupsRoutes = require('./routes/messageGroups.routes');
 const kbRoutes = require('./routes/kb.routes');
 const ticketsRoutes = require('./routes/tickets.routes');
 const adminRoutes = require('./routes/admin.routes');
@@ -25,6 +27,12 @@ const adminRoutes = require('./routes/admin.routes');
 function buildApp() {
   const app = express();
 
+  // Required for correct client IPs (and therefore correct rate limiting) behind
+  // Coolify/Traefik + Cloudflare -- without this, express-rate-limit and req.ip
+  // would see the proxy's IP for every request, not the real caller's.
+  app.set('trust proxy', 1);
+
+  app.use(helmetMiddleware);
   app.use(express.json());
   app.use(pinoHttp({ logger }));
 
@@ -32,20 +40,21 @@ function buildApp() {
   app.use(healthRoutes);
   app.get('/openapi.json', (req, res) => res.json(openapiSpec));
 
-  app.use('/api/auth', authRoutes);
+  app.use('/api/auth', authLimiter, authRoutes);
 
-  app.use('/api/users', requireAuth, usersRoutes);
-  app.use('/api/campaigns', requireAuth, campaignsRoutes);
-  app.use('/api/sales', requireAuth, salesRoutes);
-  app.use('/api/attendance', requireAuth, attendanceRoutes);
-  app.use('/api/targets', requireAuth, targetsRoutes);
-  app.use('/api/callbacks', requireAuth, callbacksRoutes);
-  app.use('/api/leads', requireAuth, leadsRoutes);
-  app.use('/api/payroll', requireAuth, payrollRoutes);
-  app.use('/api/messages', requireAuth, messagesRoutes);
-  app.use('/api/kb-articles', requireAuth, kbRoutes);
-  app.use('/api/tickets', requireAuth, ticketsRoutes);
-  app.use('/api/admin', requireAuth, adminRoutes);
+  app.use('/api/users', requireAuth, apiLimiter, usersRoutes);
+  app.use('/api/campaigns', requireAuth, apiLimiter, campaignsRoutes);
+  app.use('/api/sales', requireAuth, apiLimiter, salesRoutes);
+  app.use('/api/attendance', requireAuth, apiLimiter, attendanceRoutes);
+  app.use('/api/targets', requireAuth, apiLimiter, targetsRoutes);
+  app.use('/api/callbacks', requireAuth, apiLimiter, callbacksRoutes);
+  app.use('/api/leads', requireAuth, apiLimiter, leadsRoutes);
+  app.use('/api/payroll', requireAuth, apiLimiter, payrollRoutes);
+  app.use('/api/messages', requireAuth, apiLimiter, messagesRoutes);
+  app.use('/api/message-groups', requireAuth, apiLimiter, messageGroupsRoutes);
+  app.use('/api/kb-articles', requireAuth, apiLimiter, kbRoutes);
+  app.use('/api/tickets', requireAuth, apiLimiter, ticketsRoutes);
+  app.use('/api/admin', requireAuth, apiLimiter, adminRoutes);
 
   const distDir = path.join(__dirname, '..', 'dist');
   // Vite's built JS/CSS filenames are content-hashed, so they're safe to cache

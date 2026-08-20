@@ -1,19 +1,63 @@
 import React, { useState } from 'react';
-import { DollarSign, Printer, Clock, ShieldCheck, Eye, X } from 'lucide-react';
+import { DollarSign, Printer, Clock, ShieldCheck, Eye, X, RefreshCw, Edit3 } from 'lucide-react';
 import { formatPKR } from '../../utils/currency';
 
-export default function AdminPayroll({ payroll, onTogglePaymentStatus }) {
+function currentMonthValue() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+export default function AdminPayroll({ payroll, onTogglePaymentStatus, onGeneratePayroll, onUpdatePayrollAdjustments }) {
   const [selectedPayslip, setSelectedPayslip] = useState(null);
+  const [generateMonth, setGenerateMonth] = useState(currentMonthValue());
+  const [generating, setGenerating] = useState(false);
+  const [adjustingFor, setAdjustingFor] = useState(null);
+  const [adjustForm, setAdjustForm] = useState({ bonusPkr: '', deductionsPkr: '' });
 
   const totalPayrollPaidPkr = payroll.reduce((sum, p) => sum + (p.status === 'Paid' ? (p.netSalaryPkr || p.netSalary || 0) : 0), 0);
   const totalPayrollPendingPkr = payroll.reduce((sum, p) => sum + (p.status === 'Pending' ? (p.netSalaryPkr || p.netSalary || 0) : 0), 0);
+
+  const handleGenerate = async () => {
+    setGenerating(true);
+    try {
+      await onGeneratePayroll(generateMonth);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const openAdjust = (p) => {
+    setAdjustForm({ bonusPkr: String(p.bonusPkr || 0), deductionsPkr: String(p.deductionsPkr || 0) });
+    setAdjustingFor(p);
+  };
+
+  const handleSaveAdjust = async (e) => {
+    e.preventDefault();
+    await onUpdatePayrollAdjustments(adjustingFor.id, {
+      bonusPkr: Number(adjustForm.bonusPkr) || 0,
+      deductionsPkr: Number(adjustForm.deductionsPkr) || 0
+    });
+    setAdjustingFor(null);
+  };
 
   return (
     <div className="admin-payroll-container">
       <div className="page-header">
         <div>
           <h1 className="page-title">Salary & Payroll Management (Admin Restricted)</h1>
-          <p className="page-subtitle">Calculate base salary in PKR, sales commissions, attendance bonuses, deductions and generate payslips.</p>
+          <p className="page-subtitle">Base salary + commission (sales amount × campaign rate) are calculated automatically. Bonuses and deductions can be adjusted per agent.</p>
+        </div>
+        <div className="page-header-actions">
+          <input
+            type="month"
+            className="form-input"
+            style={{ width: '160px' }}
+            value={generateMonth}
+            onChange={(e) => setGenerateMonth(e.target.value)}
+          />
+          <button className="btn btn-primary" onClick={handleGenerate} disabled={generating}>
+            <RefreshCw size={15} /> {generating ? 'Generating…' : 'Generate Payroll'}
+          </button>
         </div>
       </div>
 
@@ -22,7 +66,7 @@ export default function AdminPayroll({ payroll, onTogglePaymentStatus }) {
         <div className="kpi-card">
           <div className="kpi-head"><span>Total Disbursed Payroll</span><div className="kpi-icon"><DollarSign size={18} /></div></div>
           <div className="kpi-value">{formatPKR(totalPayrollPaidPkr)}</div>
-          <div className="kpi-sub"><span>August 2026 Pay Cycle</span></div>
+          <div className="kpi-sub"><span>Across All Pay Cycles</span></div>
         </div>
 
         <div className="kpi-card">
@@ -77,6 +121,9 @@ export default function AdminPayroll({ payroll, onTogglePaymentStatus }) {
                         onClick={() => onTogglePaymentStatus(p.id)}
                       >
                         {p.status === 'Paid' ? 'Pending' : 'Approve & Pay'}
+                      </button>
+                      <button className="btn btn-secondary btn-sm" onClick={() => openAdjust(p)}>
+                        <Edit3 size={13} /> Adjust
                       </button>
                       <button className="btn btn-secondary btn-sm" onClick={() => setSelectedPayslip(p)}>
                         <Eye size={13} /> Payslip
@@ -152,6 +199,35 @@ export default function AdminPayroll({ payroll, onTogglePaymentStatus }) {
               </button>
               <button className="btn btn-primary" onClick={() => setSelectedPayslip(null)}>Close</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {adjustingFor && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <div className="modal-header">
+              <span className="modal-title">Adjust Bonus & Deductions — {adjustingFor.agentName}</span>
+              <button className="icon-btn" onClick={() => setAdjustingFor(null)}><X size={18} /></button>
+            </div>
+            <form onSubmit={handleSaveAdjust}>
+              <div className="modal-body">
+                <div className="grid-2">
+                  <div className="form-group">
+                    <label className="form-label">Bonus (PKR)</label>
+                    <input type="number" className="form-input" value={adjustForm.bonusPkr} onChange={e => setAdjustForm({ ...adjustForm, bonusPkr: e.target.value })} />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Deductions (PKR)</label>
+                    <input type="number" className="form-input" value={adjustForm.deductionsPkr} onChange={e => setAdjustForm({ ...adjustForm, deductionsPkr: e.target.value })} />
+                  </div>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setAdjustingFor(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Save Adjustments</button>
+              </div>
+            </form>
           </div>
         </div>
       )}

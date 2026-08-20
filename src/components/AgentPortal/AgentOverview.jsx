@@ -1,25 +1,25 @@
 import React, { useState } from 'react';
-import { 
-  DollarSign, 
-  Target, 
-  Clock, 
-  PhoneCall, 
-  CheckCircle, 
-  PlusCircle, 
+import {
+  DollarSign,
+  Clock,
+  CheckCircle,
+  PlusCircle,
   MessageSquare,
   Settings,
   X,
-  BookOpen,
-  Briefcase
+  BookOpen
 } from 'lucide-react';
 import { formatPKR } from '../../utils/currency';
+import SalesLeaderboard from '../Shared/SalesLeaderboard';
+import DashboardMessenger from '../Shared/DashboardMessenger';
 
-export default function AgentOverview({ 
-  currentUser, 
-  sales, 
-  targets, 
-  callbacks, 
-  attendanceStatus, 
+export default function AgentOverview({
+  currentUser,
+  users,
+  sales,
+  targets,
+  callbacks,
+  attendanceStatus,
   onClockAction,
   onOpenSaleModal,
   onOpenCallbackModal,
@@ -27,7 +27,8 @@ export default function AgentOverview({
   setActiveTab,
   selectedCampaignId,
   projects,
-  onOpenChat
+  onOpenChat,
+  onSendMessage
 }) {
   const [showAdvancedModal, setShowAdvancedModal] = useState(false);
 
@@ -41,15 +42,23 @@ export default function AgentOverview({
   const approvedRevenuePkr = approvedSales.reduce((acc, curr) => acc + Number(curr.amount), 0);
   const pendingRevenuePkr = pendingSales.reduce((acc, curr) => acc + Number(curr.amount), 0);
 
+  const now = new Date();
+  const approvedThisMonthPkr = approvedSales
+    .filter(s => {
+      if (!s.saleDateIso) return false;
+      const d = new Date(s.saleDateIso);
+      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
+    })
+    .reduce((acc, curr) => acc + Number(curr.amount), 0);
+
   const myTarget = targets.find(t => t.agentId === currentUser.id) || {
     dailyTargetPkr: 50000,
-    dailyAchievedPkr: approvedRevenuePkr,
-    monthlyTargetPkr: 1200000,
-    monthlyAchievedPkr: approvedRevenuePkr * 2
+    monthlyTargetPkr: 1200000
   };
 
-  const dailyPct = Math.min(Math.round((approvedRevenuePkr / myTarget.dailyTargetPkr) * 100), 100);
-  const remainingDailyPkr = Math.max(0, myTarget.dailyTargetPkr - approvedRevenuePkr);
+  const monthlyPct = myTarget.monthlyTargetPkr > 0
+    ? Math.min(Math.round((approvedThisMonthPkr / myTarget.monthlyTargetPkr) * 100), 100)
+    : 0;
 
   const pendingCallbacks = callbacks.filter(c => c.agentId === currentUser.id && c.campaignId === selectedCampaignId && c.status !== 'Completed');
 
@@ -83,27 +92,28 @@ export default function AgentOverview({
       {/* 4 Minimalist Stat Cards (Campaign Specific in PKR) */}
       <div className="kpi-grid">
         <div className="kpi-card">
-          <div className="kpi-head"><span>Sales Today (PKR)</span><div className="kpi-icon"><DollarSign size={16} /></div></div>
+          <div className="kpi-head"><span>Sales Today (PKR)</span></div>
           <div className="kpi-value">{formatPKR(approvedRevenuePkr)}</div>
           <div className="kpi-sub"><span className="text-success">{approvedSales.length} Approved Deals</span></div>
         </div>
 
         <div className="kpi-card">
-          <div className="kpi-head"><span>Campaign Target</span><div className="kpi-icon"><Target size={16} /></div></div>
-          <div className="kpi-value">{dailyPct}%</div>
+          <div className="kpi-head"><span>Monthly Target</span></div>
+          <div className="kpi-value">{monthlyPct}%</div>
           <div className="progress-bar-container">
-            <div className="progress-bar-fill" style={{ width: `${dailyPct}%` }}></div>
+            <div className="progress-bar-fill" style={{ width: `${monthlyPct}%` }}></div>
           </div>
+          <div className="kpi-sub"><span>{formatPKR(approvedThisMonthPkr)} / {formatPKR(myTarget.monthlyTargetPkr)}</span></div>
         </div>
 
         <div className="kpi-card">
-          <div className="kpi-head"><span>Pending QA Audit</span><div className="kpi-icon"><Clock size={16} /></div></div>
+          <div className="kpi-head"><span>Pending Review</span></div>
           <div className="kpi-value">{formatPKR(pendingRevenuePkr)}</div>
           <div className="kpi-sub"><span className="text-warning">{pendingSales.length} Deals Pending</span></div>
         </div>
 
         <div className="kpi-card">
-          <div className="kpi-head"><span>Callbacks Due</span><div className="kpi-icon"><PhoneCall size={16} /></div></div>
+          <div className="kpi-head"><span>Callbacks Due</span></div>
           <div className="kpi-value">{pendingCallbacks.length}</div>
           <div className="kpi-sub"><span>{activeProject?.name}</span></div>
         </div>
@@ -114,7 +124,7 @@ export default function AgentOverview({
         {/* Callbacks Card */}
         <div className="card">
           <div className="card-header">
-            <span className="card-title"><PhoneCall size={16} className="text-blue" /> Callbacks ({activeProject?.name})</span>
+            <span className="card-title">Callbacks ({activeProject?.name})</span>
             <button className="text-btn" onClick={onOpenCallbackModal}>+ New Callback</button>
           </div>
           <div className="minimal-list">
@@ -139,7 +149,7 @@ export default function AgentOverview({
         {/* Recent Deals Card */}
         <div className="card">
           <div className="card-header">
-            <span className="card-title"><DollarSign size={16} className="text-blue" /> Campaign Sales Activity</span>
+            <span className="card-title">Campaign Sales Activity</span>
             <button className="text-btn" onClick={() => setActiveTab('my-sales')}>View All</button>
           </div>
           <div className="minimal-list">
@@ -162,6 +172,14 @@ export default function AgentOverview({
         </div>
       </div>
 
+      {/* Sales Board */}
+      <div className="margin-top">
+        <SalesLeaderboard sales={sales} campaignId={selectedCampaignId} />
+      </div>
+
+      {/* Floating Team Messenger (bottom corner) */}
+      <DashboardMessenger currentUser={currentUser} users={users} onSendMessage={onSendMessage} />
+
       {/* Advanced Tools Modal */}
       {showAdvancedModal && (
         <div className="modal-overlay">
@@ -175,7 +193,7 @@ export default function AgentOverview({
                 <button className="adv-option-card" onClick={() => { setActiveTab('my-sales'); setShowAdvancedModal(false); }}>
                   <DollarSign size={20} className="text-blue" />
                   <div className="adv-title">Sales Tracker</div>
-                  <div className="adv-desc">Sale records & QA review notes</div>
+                  <div className="adv-desc">Sale records & review notes</div>
                 </button>
 
                 <button className="adv-option-card" onClick={() => { setActiveTab('attendance'); setShowAdvancedModal(false); }}>

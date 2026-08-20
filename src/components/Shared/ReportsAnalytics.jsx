@@ -44,7 +44,7 @@ export default function ReportsAnalytics({ sales, attendanceLogs, leads, payroll
               <Download size={14} /> Export CSV
             </button>
           </div>
-          <p className="text-muted text-sm margin-bottom">Includes deal IDs, verified customer names, agent submissions, sale amounts and QA approval notes.</p>
+          <p className="text-muted text-sm margin-bottom">Includes deal IDs, verified customer names, agent submissions, sale amounts and administrative review notes.</p>
           <div className="kpi-sub font-mono">Total Tracked Submissions: {sales.length} Sales Records</div>
         </div>
 

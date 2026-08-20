@@ -1,7 +1,7 @@
 name: blylinks-crm
-memory_mb: 512
+memory_mb: 384
 port: 4000
 domains:
-  - blylinks-crm.example.com
+  - blylinks-crm.zaindroid.me
 dependencies:
   - postgres

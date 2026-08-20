@@ -1,5 +1,13 @@
 import React, { useState } from 'react';
-import { Clock, ShieldCheck, Edit3, CheckCircle, AlertTriangle } from 'lucide-react';
+
+const STATUS_OPTIONS = ['Present', 'Tardy', 'Late', 'Clocked Out'];
+
+function statusBadgeClass(status) {
+  if (status === 'Present') return 'badge-success';
+  if (status === 'Tardy' || status === 'Late') return 'badge-warning';
+  if (status === 'Clocked Out') return 'badge-neutral';
+  return 'badge-error';
+}
 
 export default function AdminAttendance({ attendanceLogs, users, onUpdateAttendance }) {
   const [selectedAgentId, setSelectedAgentId] = useState('All');
@@ -50,20 +58,18 @@ export default function AdminAttendance({ attendanceLogs, users, onUpdateAttenda
                 <td className="font-mono text-muted">{log.clockOut}</td>
                 <td>{log.totalHours}</td>
                 <td>
-                  <span className={`badge ${log.status === 'Present' ? 'badge-success' : log.status === 'Late' ? 'badge-warning' : 'badge-error'}`}>
+                  <span className={`badge ${statusBadgeClass(log.status)}`}>
                     {log.status}
                   </span>
                 </td>
                 <td>
-                  <button 
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => {
-                      const newStatus = log.status === 'Present' ? 'Late' : 'Present';
-                      onUpdateAttendance(log.id, newStatus);
-                    }}
+                  <select
+                    className="form-select"
+                    value={log.status}
+                    onChange={(e) => onUpdateAttendance(log.id, e.target.value)}
                   >
-                    <Edit3 size={14} /> Set {log.status === 'Present' ? 'Late' : 'Present'}
-                  </button>
+                    {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                  </select>
                 </td>
               </tr>
             ))}

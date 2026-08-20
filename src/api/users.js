@@ -15,3 +15,7 @@ export function deactivateUser(id) {
 export function updateUserCampaigns(id, campaignIds) {
   return apiFetch(`/users/${id}/campaigns`, { method: 'PATCH', body: { campaignIds } });
 }
+
+export function updateBaseSalary(id, baseSalaryPkr) {
+  return apiFetch(`/users/${id}/base-salary`, { method: 'PATCH', body: { baseSalaryPkr } });
+}

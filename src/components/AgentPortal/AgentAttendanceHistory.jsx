@@ -1,6 +1,13 @@
 import React from 'react';
 import { Clock, CheckCircle, AlertTriangle, ShieldCheck } from 'lucide-react';
 
+function statusBadgeClass(status) {
+  if (status === 'Present') return 'badge-success';
+  if (status === 'Tardy' || status === 'Late') return 'badge-warning';
+  if (status === 'Clocked Out') return 'badge-neutral';
+  return 'badge-error';
+}
+
 export default function AgentAttendanceHistory({ currentUser, attendanceLogs, attendanceStatus, onClockAction }) {
   const myLogs = attendanceLogs.filter(a => a.agentId === currentUser.id);
 
@@ -31,7 +38,7 @@ export default function AgentAttendanceHistory({ currentUser, attendanceLogs, at
         </div>
         <div>
           <div className="text-muted text-sm">Today Status:</div>
-          <span className={`badge ${attendanceStatus === 'Present' ? 'badge-success' : 'badge-warning'}`}>
+          <span className={`badge ${statusBadgeClass(attendanceStatus)}`}>
             {attendanceStatus}
           </span>
         </div>

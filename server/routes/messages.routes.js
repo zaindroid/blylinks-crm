@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../db/pool');
 const asyncHandler = require('../utils/asyncHandler');
+const genId = require('../utils/genId');
 
 const router = express.Router();
 
@@ -22,29 +23,81 @@ function reshape(row) {
   };
 }
 
+// Direct-message channel ids use ':' and '|' -- characters that never appear in a user id --
+// so a participant can be verified with plain prefix/suffix checks, no ambiguous parsing.
+const DM_PREFIX = 'dm:';
+
+function isDmChannel(channel) {
+  return typeof channel === 'string' && channel.startsWith(DM_PREFIX);
+}
+
+function dmChannelId(userIdA, userIdB) {
+  return `${DM_PREFIX}${[userIdA, userIdB].sort().join('|')}`;
+}
+
+function isDmParticipant(userId, channel) {
+  return channel.startsWith(`${DM_PREFIX}${userId}|`) || channel.endsWith(`|${userId}`);
+}
+
+async function isMemberOfGroup(userId, groupId) {
+  const { rows } = await pool.query(
+    'SELECT 1 FROM message_group_members WHERE group_id = $1 AND user_id = $2',
+    [groupId, userId]
+  );
+  return rows.length > 0;
+}
+
+async function allowedChannelsForUser(userId) {
+  const { rows: groupRows } = await pool.query(
+    'SELECT group_id FROM message_group_members WHERE user_id = $1',
+    [userId]
+  );
+  const { rows: dmRows } = await pool.query(
+    'SELECT DISTINCT channel FROM messages WHERE channel LIKE $1',
+    [`${DM_PREFIX}%`]
+  );
+  const myDmChannels = dmRows.map(r => r.channel).filter(ch => isDmParticipant(userId, ch));
+  return [...groupRows.map(r => r.group_id), ...myDmChannels];
+}
+
 router.get('/', asyncHandler(async (req, res) => {
-  const { channel, since } = req.query;
-  const conditions = [];
-  const params = [];
+  const { channel } = req.query;
+
   if (channel) {
-    params.push(channel);
-    conditions.push(`m.channel = $${params.length}`);
+    const authorized = isDmChannel(channel)
+      ? isDmParticipant(req.user.id, channel)
+      : await isMemberOfGroup(req.user.id, channel);
+    if (!authorized) {
+      return res.status(403).json({ error: 'You are not part of this conversation' });
+    }
+    const { rows } = await pool.query(`${SELECT_MESSAGE} WHERE m.channel = $1 ORDER BY m.created_at ASC`, [channel]);
+    return res.json(rows.map(reshape));
   }
-  if (since) {
-    params.push(since);
-    conditions.push(`m.created_at > $${params.length}`);
-  }
-  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  const { rows } = await pool.query(`${SELECT_MESSAGE} ${where} ORDER BY m.created_at ASC`, params);
+
+  const allowed = await allowedChannelsForUser(req.user.id);
+  if (allowed.length === 0) return res.json([]);
+  const { rows } = await pool.query(`${SELECT_MESSAGE} WHERE m.channel = ANY($1) ORDER BY m.created_at ASC`, [allowed]);
   res.json(rows.map(reshape));
 }));
 
 router.post('/', asyncHandler(async (req, res) => {
-  const { channel, text } = req.body;
+  const { channel, text, recipientId } = req.body;
   if (!channel || !text) {
     return res.status(400).json({ error: 'channel and text are required' });
   }
-  const id = `msg_${Date.now()}`;
+
+  if (isDmChannel(channel)) {
+    if (!recipientId || dmChannelId(req.user.id, recipientId) !== channel) {
+      return res.status(403).json({ error: 'Invalid direct message channel' });
+    }
+  } else {
+    const member = await isMemberOfGroup(req.user.id, channel);
+    if (!member) {
+      return res.status(403).json({ error: 'You are not a member of this group' });
+    }
+  }
+
+  const id = genId('msg');
   await pool.query(
     `INSERT INTO messages (id, channel, sender_id, text) VALUES ($1,$2,$3,$4)`,
     [id, channel, req.user.id, text]

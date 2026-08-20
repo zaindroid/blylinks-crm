@@ -7,3 +7,11 @@ export function fetchPayroll() {
 export function togglePaymentStatus(id) {
   return apiFetch(`/payroll/${id}/toggle-payment`, { method: 'PATCH' });
 }
+
+export function generatePayroll(month) {
+  return apiFetch('/payroll/generate', { method: 'POST', body: { month } });
+}
+
+export function updatePayrollAdjustments(id, { bonusPkr, deductionsPkr }) {
+  return apiFetch(`/payroll/${id}`, { method: 'PATCH', body: { bonusPkr, deductionsPkr } });
+}

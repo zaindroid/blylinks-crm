@@ -5,12 +5,14 @@
     "/api/auth/login": { "post": { "summary": "Log in", "responses": { "200": { "description": "OK" } } } },
     "/api/auth/bootstrap-status": { "get": { "summary": "Whether the database has zero users yet (public)", "responses": { "200": { "description": "OK" } } } },
     "/api/auth/register": { "post": { "summary": "Bootstrap-only: creates the first Admin on an empty database, 403s otherwise", "responses": { "201": { "description": "Created" } } } },
+    "/api/auth/change-password": { "patch": { "summary": "Self-service password change. Requires currentPassword + newPassword (min 8 chars); 401 if currentPassword is wrong.", "responses": { "200": { "description": "OK" } } } },
     "/api/users": {
       "get": { "summary": "List users", "responses": { "200": { "description": "OK" } } },
       "post": { "summary": "Create a user (Admin: any role/campaigns; Supervisor: Agent-only, campaigns within own scope)", "responses": { "201": { "description": "Created" } } }
     },
     "/api/users/{id}": { "delete": { "summary": "Deactivate a user (Admin: anyone; Supervisor: own-scope Agents only)", "responses": { "200": { "description": "OK" } } } },
     "/api/users/{id}/campaigns": { "patch": { "summary": "Replace a user's campaign access (Admin)", "responses": { "200": { "description": "OK" } } } },
+    "/api/users/{id}/base-salary": { "patch": { "summary": "Set a user's monthly base salary in PKR, used by payroll generation (Admin)", "responses": { "200": { "description": "OK" } } } },
     "/api/campaigns": {
       "get": { "summary": "List campaigns", "responses": { "200": { "description": "OK" } } },
       "post": { "summary": "Create campaign (Admin)", "responses": { "201": { "description": "Created" } } }
@@ -18,8 +20,8 @@
     "/api/campaigns/{id}": { "patch": { "summary": "Update campaign (Admin)", "responses": { "200": { "description": "OK" } } } },
     "/api/campaigns/{id}/toggle-status": { "patch": { "summary": "Toggle campaign active status (Admin)", "responses": { "200": { "description": "OK" } } } },
     "/api/sales": {
-      "get": { "summary": "List sales", "responses": { "200": { "description": "OK" } } },
-      "post": { "summary": "Submit a sale (Agent)", "responses": { "201": { "description": "Created" } } }
+      "get": { "summary": "List sales (optional ?campaignId filter). Each sale includes full utility-order fields: address/apt/city/state/zipCode, phone2, supplierName, electric/gas utility+account+rate fields, confirmationNumber, and a raw saleDateIso for client-side date-range filtering.", "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Submit a sale/order (Agent). Required: campaignId, customerName, phone, amount. Accepts the full order-detail field set plus an optional saleDate.", "responses": { "201": { "description": "Created" } } }
     },
     "/api/sales/{id}/approve": { "patch": { "summary": "Approve sale (Admin/Supervisor)", "responses": { "200": { "description": "OK" } } } },
     "/api/sales/{id}/reject": { "patch": { "summary": "Reject sale (Admin/Supervisor)", "responses": { "200": { "description": "OK" } } } },
@@ -40,11 +42,19 @@
     },
     "/api/leads/{id}/status": { "patch": { "summary": "Update lead status", "responses": { "200": { "description": "OK" } } } },
     "/api/payroll": { "get": { "summary": "List payroll records", "responses": { "200": { "description": "OK" } } } },
+    "/api/payroll/generate": { "post": { "summary": "Generate/refresh payroll for a month (Admin). Body: { month: 'YYYY-MM' }. Computes base salary + commission (approved sales amount x campaign commission_rate) per active agent; preserves existing bonus/deductions on regeneration.", "responses": { "200": { "description": "OK" } } } },
+    "/api/payroll/{id}": { "patch": { "summary": "Adjust bonus/deductions on a payroll record and recompute net salary (Admin)", "responses": { "200": { "description": "OK" } } } },
     "/api/payroll/{id}/toggle-payment": { "patch": { "summary": "Toggle payroll payment status (Admin)", "responses": { "200": { "description": "OK" } } } },
     "/api/messages": {
-      "get": { "summary": "List/poll messages by channel", "responses": { "200": { "description": "OK" } } },
-      "post": { "summary": "Send a message", "responses": { "201": { "description": "Created" } } }
+      "get": { "summary": "List/poll messages. ?channel= scopes to one group or DM thread (403 if you're not a member/participant); omitted, returns every message across every group you belong to plus your own DM threads.", "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Send a message. For a group channel you must be a member (403 otherwise). For a DM channel (id starts with 'dm:'), also pass recipientId; the server recomputes the expected channel id and rejects a mismatch.", "responses": { "201": { "description": "Created" } } }
     },
+    "/api/message-groups": {
+      "get": { "summary": "List message groups. Default: only groups you belong to. ?all=true (Admin only): every group in the system, for management.", "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Create a message group (Admin: any members; Supervisor: self + Agents within own campaign scope). Body: { id, name, memberIds }", "responses": { "201": { "description": "Created" } } }
+    },
+    "/api/message-groups/{id}/members": { "patch": { "summary": "Replace a group's membership (Admin: any; Supervisor: must be a member themselves, can only add Agents within own campaign scope)", "responses": { "200": { "description": "OK" } } } },
+    "/api/message-groups/{id}": { "delete": { "summary": "Delete a message group (Admin only)", "responses": { "200": { "description": "OK" } } } },
     "/api/kb-articles": { "get": { "summary": "List knowledge base articles", "responses": { "200": { "description": "OK" } } } },
     "/api/tickets": {
       "get": { "summary": "List support tickets", "responses": { "200": { "description": "OK" } } },

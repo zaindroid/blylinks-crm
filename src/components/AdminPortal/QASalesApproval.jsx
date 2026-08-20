@@ -1,15 +1,21 @@
 import React, { useState } from 'react';
-import { CheckCircle, XCircle, Search, Filter, AlertCircle, FileText, Check, X, ShieldAlert } from 'lucide-react';
+import { Search, Filter, Check, X, CalendarRange, Eye } from 'lucide-react';
+import { DATE_RANGE_PRESETS, filterByDateRange } from '../../utils/dateFilters';
+import SaleDetailModal from '../Shared/SaleDetailModal';
 
 export default function QASalesApproval({ sales, currentUser, onApproveSale, onRejectSale }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Pending');
+  const [dateRangePreset, setDateRangePreset] = useState('All Time');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const [activeSaleModal, setActiveSaleModal] = useState(null);
   const [qaActionType, setQaActionType] = useState('Approve'); // Approve or Reject
   const [qaNote, setQaNote] = useState('');
+  const [detailSale, setDetailSale] = useState(null);
 
-  const filteredSales = sales.filter(s => {
-    const matchesSearch = s.customerName.toLowerCase().includes(searchTerm.toLowerCase()) || 
+  const filteredSales = filterByDateRange(sales, 'saleDateIso', dateRangePreset, customFrom, customTo).filter(s => {
+    const matchesSearch = s.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           s.agentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           s.id.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'All' || s.status === statusFilter;
@@ -19,7 +25,7 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
   const handleOpenActionModal = (sale, action) => {
     setActiveSaleModal(sale);
     setQaActionType(action);
-    setQaNote(action === 'Approve' ? 'Audio recording & customer contract verified clean.' : 'Disqualified: Call verification failed.');
+    setQaNote(action === 'Approve' ? 'Order details & contract verified clean.' : 'Disqualified: verification failed.');
   };
 
   const handleConfirmAction = () => {
@@ -36,31 +42,47 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
     <div className="qa-approval-container">
       <div className="page-header">
         <div>
-          <h1 className="page-title">QA Sales Quality Control & Approval Queue</h1>
-          <p className="page-subtitle">Review agent submitted deals, audit audio recordings, approve commissions or reject invalid entries.</p>
+          <h1 className="page-title">Administrative Review — Order Approval Queue</h1>
+          <p className="page-subtitle">Review agent submitted orders, verify details, approve commissions or reject invalid entries.</p>
         </div>
       </div>
 
-      <div className="card margin-bottom flex-between">
-        <div className="search-box">
-          <Search size={16} className="search-icon" />
-          <input 
-            type="text" 
-            placeholder="Search by sale ID, agent or customer..." 
-            value={searchTerm} 
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="form-input"
-          />
+      <div className="card margin-bottom">
+        <div className="flex-between">
+          <div className="search-box">
+            <Search size={16} className="search-icon" />
+            <input
+              type="text"
+              placeholder="Search by sale ID, agent or customer..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="form-input"
+            />
+          </div>
+
+          <div className="filter-box">
+            <Filter size={16} className="text-muted" />
+            <select className="form-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+              <option value="All">All Statuses</option>
+              <option value="Pending">Pending Review Only</option>
+              <option value="Approved">Approved Deals</option>
+              <option value="Rejected">Rejected Deals</option>
+            </select>
+          </div>
         </div>
 
-        <div className="filter-box">
-          <Filter size={16} className="text-muted" />
-          <select className="form-select" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="All">All Statuses</option>
-            <option value="Pending">Pending QA Only</option>
-            <option value="Approved">Approved Deals</option>
-            <option value="Rejected">Rejected Deals</option>
+        <div className="filter-box margin-top">
+          <CalendarRange size={16} className="text-muted" />
+          <select className="form-select" value={dateRangePreset} onChange={(e) => setDateRangePreset(e.target.value)}>
+            {DATE_RANGE_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
           </select>
+          {dateRangePreset === 'Custom' && (
+            <>
+              <input type="date" className="form-input" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+              <span className="text-muted text-sm">to</span>
+              <input type="date" className="form-input" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+            </>
+          )}
         </div>
       </div>
 
@@ -75,14 +97,14 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
               <th>Amount ($)</th>
               <th>Date</th>
               <th>Status</th>
-              <th>Agent Notes</th>
-              <th>QA Actions</th>
+              <th>Details</th>
+              <th>Review Actions</th>
             </tr>
           </thead>
           <tbody>
             {filteredSales.length === 0 ? (
               <tr>
-                <td colSpan="9" style={{ textAlign: 'center', padding: '2rem' }}>No sales found in QA queue matching criteria.</td>
+                <td colSpan="9" style={{ textAlign: 'center', padding: '2rem' }}>No orders found matching criteria.</td>
               </tr>
             ) : (
               filteredSales.map(sale => (
@@ -101,7 +123,11 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
                       {sale.status}
                     </span>
                   </td>
-                  <td className="text-subtle text-sm" style={{ maxWidth: '220px' }}>{sale.agentNotes}</td>
+                  <td>
+                    <button className="btn btn-secondary btn-sm" onClick={() => setDetailSale(sale)}>
+                      <Eye size={13} /> View
+                    </button>
+                  </td>
                   <td>
                     {sale.status === 'Pending' ? (
                       <div className="btn-group-sm">
@@ -113,7 +139,7 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
                         </button>
                       </div>
                     ) : (
-                      <span className="text-subtle text-xs">QA Done by {sale.verifiedBy || 'Admin'}</span>
+                      <span className="text-subtle text-xs">Reviewed by {sale.verifiedBy || 'Admin'}</span>
                     )}
                   </td>
                 </tr>
@@ -123,7 +149,11 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
         </table>
       </div>
 
-      {/* QA Confirmation Modal */}
+      {detailSale && (
+        <SaleDetailModal sale={detailSale} onClose={() => setDetailSale(null)} />
+      )}
+
+      {/* Review Confirmation Modal */}
       {activeSaleModal && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -142,19 +172,19 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
               </div>
 
               <div className="form-group">
-                <label className="form-label">QA Review Note & Rejection/Approval Reason *</label>
-                <textarea 
+                <label className="form-label">Administrative Review Note & Rejection/Approval Reason *</label>
+                <textarea
                   className="form-textarea"
                   rows="3"
                   value={qaNote}
                   onChange={(e) => setQaNote(e.target.value)}
-                  placeholder="Enter reason for audit status update..."
+                  placeholder="Enter reason for review status update..."
                 ></textarea>
               </div>
             </div>
             <div className="modal-footer">
               <button className="btn btn-secondary" onClick={() => setActiveSaleModal(null)}>Cancel</button>
-              <button 
+              <button
                 className={`btn ${qaActionType === 'Approve' ? 'btn-success' : 'btn-danger'}`}
                 onClick={handleConfirmAction}
               >
