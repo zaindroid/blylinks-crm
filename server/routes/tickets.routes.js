@@ -26,7 +26,17 @@ function reshape(row) {
 }
 
 router.get('/', asyncHandler(async (req, res) => {
-  const { rows } = await pool.query(`${SELECT_TICKET} ORDER BY t.ticket_date DESC`);
+  // An Agent sees only their own submitted support tickets, not every
+  // coworker's. Admin/Supervisor keep full visibility -- they already
+  // resolve tickets for the whole team.
+  let sql = SELECT_TICKET;
+  const params = [];
+  if (req.user.role === 'Agent') {
+    params.push(req.user.id);
+    sql += ` WHERE t.agent_id = $1`;
+  }
+  sql += ` ORDER BY t.ticket_date DESC`;
+  const { rows } = await pool.query(sql, params);
   res.json(rows.map(reshape));
 }));
 

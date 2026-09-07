@@ -50,7 +50,17 @@ function clockInStatusPKT() {
 }
 
 router.get('/', asyncHandler(async (req, res) => {
-  const { rows } = await pool.query(`${SELECT_ATTENDANCE} ORDER BY a.log_date DESC, a.id DESC`);
+  // An Agent may only see their own clock-in/out history, not the whole
+  // team's. Admin/Supervisor keep full visibility -- they already manage
+  // attendance status overrides for everyone.
+  let sql = `${SELECT_ATTENDANCE}`;
+  const params = [];
+  if (req.user.role === 'Agent') {
+    params.push(req.user.id);
+    sql += ` WHERE a.agent_id = $1`;
+  }
+  sql += ` ORDER BY a.log_date DESC, a.id DESC`;
+  const { rows } = await pool.query(sql, params);
   res.json(rows.map(reshape));
 }));
 

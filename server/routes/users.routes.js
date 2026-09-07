@@ -8,7 +8,7 @@ const { passwordError } = require('../utils/validatePassword');
 const { joinDefaultGroups } = require('../utils/defaultGroups');
 const {
   listPublicUsers, toPublicUser, findUserRowByUsername, findUserRowById,
-  getAllowedCampaignIds, shareCampaignAccess
+  getAllowedCampaignIds, shareCampaignAccess, sanitizeUsersForViewer
 } = require('../db/usersRepo');
 
 const router = express.Router();
@@ -21,7 +21,7 @@ const DESIGNATIONS = {
 
 router.get('/', asyncHandler(async (req, res) => {
   const users = await listPublicUsers();
-  res.json(users);
+  res.json(sanitizeUsersForViewer(users, req.user));
 }));
 
 router.post('/', asyncHandler(async (req, res) => {

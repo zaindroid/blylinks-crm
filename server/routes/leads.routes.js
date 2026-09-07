@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('../db/pool');
 const asyncHandler = require('../utils/asyncHandler');
+const { getAllowedCampaignIds } = require('../db/usersRepo');
 
 const router = express.Router();
 
@@ -31,7 +32,23 @@ function reshape(row) {
 }
 
 router.get('/', asyncHandler(async (req, res) => {
-  const { rows } = await pool.query(`${SELECT_LEAD} ORDER BY l.last_contact DESC NULLS LAST`);
+  // A lead carries customer PII (name, phone, email, address) -- an Agent
+  // only sees the ones assigned to them. Supervisor is scoped to their own
+  // campaigns; Admin sees everything.
+  const conditions = [];
+  const params = [];
+  if (req.user.role === 'Agent') {
+    params.push(req.user.id);
+    conditions.push(`l.assigned_agent_id = $${params.length}`);
+  } else if (req.user.role === 'Supervisor') {
+    const allowedCampaignIds = await getAllowedCampaignIds(req.user.id);
+    params.push(allowedCampaignIds);
+    conditions.push(`l.campaign_id = ANY($${params.length})`);
+  }
+  let sql = SELECT_LEAD;
+  if (conditions.length > 0) sql += ` WHERE ${conditions.join(' AND ')}`;
+  sql += ` ORDER BY l.last_contact DESC NULLS LAST`;
+  const { rows } = await pool.query(sql, params);
   res.json(rows.map(reshape));
 }));
 
@@ -53,9 +70,18 @@ router.post('/', asyncHandler(async (req, res) => {
 router.patch('/:id/status', asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
+  const { rows: existing } = await pool.query('SELECT assigned_agent_id FROM leads WHERE id = $1', [id]);
+  if (!existing[0]) return res.status(404).json({ error: 'Lead not found' });
+
+  // Only the agent it's assigned to, or a manager, can update its status --
+  // previously this had no check at all, so any authenticated agent could
+  // reassign the status of a lead that wasn't theirs.
+  if (req.user.role === 'Agent' && existing[0].assigned_agent_id !== req.user.id) {
+    return res.status(403).json({ error: 'This lead is not assigned to you' });
+  }
+
   await pool.query('UPDATE leads SET status = $2 WHERE id = $1', [id, status]);
   const { rows } = await pool.query(`${SELECT_LEAD} WHERE l.id = $1`, [id]);
-  if (!rows[0]) return res.status(404).json({ error: 'Lead not found' });
   res.json(reshape(rows[0]));
 }));
 

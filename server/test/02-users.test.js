@@ -93,6 +93,20 @@ describe('user deletion (soft-delete) RBAC', () => {
     expect(found.status).toBe('Inactive');
   });
 
+  it('security: deactivating a user immediately revokes their still-unexpired token -- not just at next login', async () => {
+    const agent = await createAgentViaApi(admin.token, [campaignA]);
+    // Prove the token genuinely works before deactivation.
+    const before = await request(app).get('/api/users').set('Authorization', `Bearer ${agent.token}`);
+    expect(before.status).toBe(200);
+
+    await request(app).delete(`/api/users/${agent.id}`).set('Authorization', `Bearer ${admin.token}`);
+
+    // Same token, never re-issued, still cryptographically valid and unexpired --
+    // must be rejected purely because the account is no longer Active.
+    const after = await request(app).get('/api/users').set('Authorization', `Bearer ${agent.token}`);
+    expect(after.status).toBe(401);
+  });
+
   it('Supervisor can remove an Agent that shares their campaign access', async () => {
     const supUser = await insertUser({ role: 'Supervisor', username: uid('del_sup') });
     await request(app).patch(`/api/users/${supUser.id}/campaigns`).set('Authorization', `Bearer ${admin.token}`).send({ campaignIds: [campaignA] });

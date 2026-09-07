@@ -44,6 +44,14 @@ async function findUserRowById(id) {
   return rows[0] || null;
 }
 
+// Minimal, fast lookup for the auth middleware -- runs on every authenticated
+// request, so it only selects what that check actually needs rather than the
+// full row (password hash included) that findUserRowById returns.
+async function findAuthInfoById(id) {
+  const { rows } = await pool.query('SELECT id, role, status FROM users WHERE id = $1', [id]);
+  return rows[0] || null;
+}
+
 async function toPublicUser(row) {
   const allowedCampaignIds = await getAllowedCampaignIds(row.id);
   return reshapeUser(row, allowedCampaignIds);
@@ -60,7 +68,33 @@ async function listPublicUsers() {
   return rows.map(row => reshapeUser(row, byUser[row.id] || []));
 }
 
+// cnic, phone and baseSalaryPkr are personal/compensation data -- fine for
+// Admin to see about anyone, and for a Supervisor to see about the Agents in
+// their own campaign scope (they set salaries and manage those accounts),
+// but nobody's business to see about a coworker otherwise. This runs after
+// listPublicUsers()/toPublicUser() to redact those three fields per-viewer;
+// everything else (name, role, avatar, status, allowedCampaignIds, ...) stays
+// visible to any authenticated teammate, since the app's directory, DM
+// contact list and message-group membership pickers all depend on that.
+function sanitizeUsersForViewer(users, viewer) {
+  if (viewer.role === 'Admin') return users;
+
+  const viewerCampaignIds = new Set(
+    (users.find(u => u.id === viewer.id)?.allowedCampaignIds) || []
+  );
+
+  return users.map(u => {
+    if (u.id === viewer.id) return u;
+    const sharesScope = viewer.role === 'Supervisor' &&
+      u.role === 'Agent' &&
+      u.allowedCampaignIds.some(id => viewerCampaignIds.has(id));
+    if (sharesScope) return u;
+    return { ...u, cnic: null, phone: null, baseSalaryPkr: 0 };
+  });
+}
+
 module.exports = {
   reshapeUser, getAllowedCampaignIds, shareCampaignAccess,
-  findUserRowByUsername, findUserRowById, toPublicUser, listPublicUsers
+  findUserRowByUsername, findUserRowById, findAuthInfoById, toPublicUser, listPublicUsers,
+  sanitizeUsersForViewer
 };

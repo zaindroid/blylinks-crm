@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db/pool');
 const asyncHandler = require('../utils/asyncHandler');
 const { requireRole } = require('../middleware/auth');
+const { getAllowedCampaignIds } = require('../db/usersRepo');
 
 const router = express.Router();
 
@@ -41,7 +42,15 @@ async function listCampaigns() {
 }
 
 router.get('/', asyncHandler(async (req, res) => {
-  res.json(await listCampaigns());
+  const campaigns = await listCampaigns();
+  if (req.user.role === 'Admin') {
+    return res.json(campaigns);
+  }
+  // Agent/Supervisor only see campaigns they're actually assigned to -- each
+  // one's revenue/target figures are business-sensitive, and there's no
+  // reason a rep on Campaign A should see Campaign B's numbers.
+  const allowedCampaignIds = await getAllowedCampaignIds(req.user.id);
+  res.json(campaigns.filter(c => allowedCampaignIds.includes(c.id)));
 }));
 
 router.post('/', requireRole('Admin'), asyncHandler(async (req, res) => {

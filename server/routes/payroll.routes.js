@@ -28,7 +28,18 @@ function reshape(row) {
 }
 
 router.get('/', asyncHandler(async (req, res) => {
-  const { rows } = await pool.query(`${SELECT_PAYROLL} ORDER BY p.id DESC`);
+  // Salary/commission data -- an Agent may only ever see their own payroll
+  // record, never a coworker's. Admin/Supervisor manage payroll for the
+  // whole team, so they keep full visibility (matches their existing broad
+  // trust level elsewhere -- creating/deactivating accounts, setting salaries).
+  let sql = `${SELECT_PAYROLL}`;
+  const params = [];
+  if (req.user.role === 'Agent') {
+    params.push(req.user.id);
+    sql += ` WHERE p.agent_id = $1`;
+  }
+  sql += ` ORDER BY p.id DESC`;
+  const { rows } = await pool.query(sql, params);
   res.json(rows.map(reshape));
 }));
 

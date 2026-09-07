@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db/pool');
 const asyncHandler = require('../utils/asyncHandler');
 const { requireRole } = require('../middleware/auth');
+const { getAllowedCampaignIds } = require('../db/usersRepo');
 
 const router = express.Router();
 
@@ -56,11 +57,31 @@ function reshapeSale(row) {
 
 router.get('/', asyncHandler(async (req, res) => {
   const { campaignId } = req.query;
+  const conditions = [];
   const params = [];
-  let sql = SELECT_SALE;
+
+  // Row-level scoping: a sale contains full customer PII (address, phone,
+  // utility account numbers) an Agent submitted -- other Agents have no
+  // business right to browse it, regardless of what the UI currently shows.
+  // Admin sees everything; Supervisor is scoped the same way campaign
+  // management already scopes them elsewhere in the app.
+  if (req.user.role === 'Agent') {
+    params.push(req.user.id);
+    conditions.push(`s.agent_id = $${params.length}`);
+  } else if (req.user.role === 'Supervisor') {
+    const allowedCampaignIds = await getAllowedCampaignIds(req.user.id);
+    params.push(allowedCampaignIds);
+    conditions.push(`s.campaign_id = ANY($${params.length})`);
+  }
+
   if (campaignId) {
     params.push(campaignId);
-    sql += ` WHERE s.campaign_id = $1`;
+    conditions.push(`s.campaign_id = $${params.length}`);
+  }
+
+  let sql = SELECT_SALE;
+  if (conditions.length > 0) {
+    sql += ` WHERE ${conditions.join(' AND ')}`;
   }
   sql += ` ORDER BY s.created_at DESC`;
   const { rows } = await pool.query(sql, params);
@@ -90,9 +111,28 @@ async function verifierName(userId) {
   return rows[0] ? `${rows[0].name} (${rows[0].role})` : '';
 }
 
+// A Supervisor may only review sales in campaigns they themselves have
+// access to -- without this, any Supervisor could approve/reject a sale
+// belonging to a totally unrelated campaign they have no assignment to.
+async function assertReviewScope(req, res, saleId) {
+  if (req.user.role !== 'Supervisor') return true;
+  const { rows } = await pool.query('SELECT campaign_id FROM sales WHERE id = $1', [saleId]);
+  if (!rows[0]) {
+    res.status(404).json({ error: 'Sale not found' });
+    return false;
+  }
+  const allowedCampaignIds = await getAllowedCampaignIds(req.user.id);
+  if (!allowedCampaignIds.includes(rows[0].campaign_id)) {
+    res.status(403).json({ error: 'This sale is outside your campaign access' });
+    return false;
+  }
+  return true;
+}
+
 router.patch('/:id/approve', requireRole('Admin', 'Supervisor'), asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { qaNote } = req.body;
+  if (!(await assertReviewScope(req, res, id))) return;
   const verifiedBy = await verifierName(req.user.id);
   await pool.query(
     `UPDATE sales SET status = 'Approved', qa_notes = $2, verified_by = $3 WHERE id = $1`,
@@ -106,6 +146,7 @@ router.patch('/:id/approve', requireRole('Admin', 'Supervisor'), asyncHandler(as
 router.patch('/:id/reject', requireRole('Admin', 'Supervisor'), asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { qaNote } = req.body;
+  if (!(await assertReviewScope(req, res, id))) return;
   const verifiedBy = await verifierName(req.user.id);
   await pool.query(
     `UPDATE sales SET status = 'Rejected', qa_notes = $2, verified_by = $3 WHERE id = $1`,

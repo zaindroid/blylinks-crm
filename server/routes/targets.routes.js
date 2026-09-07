@@ -25,7 +25,15 @@ function reshape(row) {
 }
 
 router.get('/', asyncHandler(async (req, res) => {
-  const { rows } = await pool.query(SELECT_TARGETS);
+  // An Agent sees only their own target/achievement figures, not the whole
+  // team's individual performance numbers.
+  let sql = SELECT_TARGETS;
+  const params = [];
+  if (req.user.role === 'Agent') {
+    params.push(req.user.id);
+    sql += ` WHERE t.agent_id = $1`;
+  }
+  const { rows } = await pool.query(sql, params);
   res.json(rows.map(reshape));
 }));
 
