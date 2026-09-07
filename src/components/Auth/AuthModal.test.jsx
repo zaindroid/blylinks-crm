@@ -78,7 +78,7 @@ describe('AuthModal', () => {
     render(<AuthModal isOpen onClose={() => {}} onAuthenticated={() => {}} />);
     await waitFor(() => expect(screen.getByText(/set up your organization/i)).toBeInTheDocument());
 
-    await user.type(screen.getByPlaceholderText(/zain malik/i), 'Only Name Filled');
+    await user.type(screen.getByPlaceholderText(/full name/i), 'Only Name Filled');
     await user.click(screen.getByRole('button', { name: /create organization/i }));
 
     expect(authApi.bootstrapFirstAdmin).not.toHaveBeenCalled();

@@ -12,6 +12,10 @@ const { findUserRowByUsername, findUserRowById, toPublicUser } = require('../db/
 
 const router = express.Router();
 
+// Rate limiting for this whole router (including /login and /register, the
+// unauthenticated brute-force/credential-stuffing targets) is applied once,
+// at the mount point in app.js, rather than per-route here.
+
 function issueToken(row) {
   return jwt.sign({ sub: row.id, role: row.role }, config.jwtSecret, { expiresIn: '12h' });
 }

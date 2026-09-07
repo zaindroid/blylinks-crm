@@ -29,7 +29,11 @@ function buildApp() {
 
   // Required for correct client IPs (and therefore correct rate limiting) behind
   // Coolify/Traefik + Cloudflare -- without this, express-rate-limit and req.ip
-  // would see the proxy's IP for every request, not the real caller's.
+  // would see the proxy's IP for every request, not the real caller's. (A
+  // second, independent security pass on origin/main added its own inline
+  // helmet() config here without this -- folded into server/middleware/security.js
+  // instead, which also adds img-src/connect-src/script-src the inline version
+  // didn't need to cover yet.)
   app.set('trust proxy', 1);
 
   app.use(helmetMiddleware);
