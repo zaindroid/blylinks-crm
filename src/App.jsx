@@ -74,6 +74,10 @@ export default function App() {
   // Chat drawer state: 'closed' | 'open' | 'minimized'
   const [chatPanelState, setChatPanelState] = useState('closed');
   const [chatUnreadCount, setChatUnreadCount] = useState(0);
+  const chatPanelStateRef = useRef(chatPanelState);
+  useEffect(() => { chatPanelStateRef.current = chatPanelState; }, [chatPanelState]);
+  const seenMessageIds = useRef(new Set());
+  const messagesInitialized = useRef(false);
 
   // Ask for desktop notification permission once, up front
   useEffect(() => {
@@ -147,8 +151,9 @@ export default function App() {
 
     const interval = setInterval(async () => {
       try {
-        const [salesData, campaignsData, attendanceData, payrollData, callbacksData, leadsData, ticketsData] = await Promise.all([
-          fetchSales(), fetchCampaigns(), fetchAttendance(), fetchPayroll(), fetchCallbacks(), fetchLeads(), fetchTickets()
+        const [salesData, campaignsData, attendanceData, payrollData, callbacksData, leadsData, ticketsData, messagesData, groupsData] = await Promise.all([
+          fetchSales(), fetchCampaigns(), fetchAttendance(), fetchPayroll(), fetchCallbacks(), fetchLeads(), fetchTickets(),
+          fetchMessages(), fetchMessageGroups({ all: currentUser.role === 'Admin' })
         ]);
         if (cancelled) return;
 
@@ -179,6 +184,21 @@ export default function App() {
         setCallbacks(callbacksData);
         setLeads(leadsData);
         setTickets(ticketsData);
+
+        if (!messagesInitialized.current) {
+          messagesData.forEach(m => seenMessageIds.current.add(m.id));
+          messagesInitialized.current = true;
+        } else {
+          const incoming = messagesData.filter(m => m.senderId !== currentUser.id && !seenMessageIds.current.has(m.id));
+          if (incoming.length > 0) {
+            incoming.forEach(m => seenMessageIds.current.add(m.id));
+            if (chatPanelStateRef.current !== 'open') {
+              setChatUnreadCount(c => c + incoming.length);
+            }
+          }
+        }
+        setMessages(messagesData);
+        setMessageGroups(groupsData);
       } catch (err) {
         console.error('Background sync failed', err);
       }

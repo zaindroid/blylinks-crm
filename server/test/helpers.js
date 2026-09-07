@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const request = require('supertest');
 const pool = require('../db/pool');
 const buildApp = require('../app');
+const { joinDefaultGroups } = require('../utils/defaultGroups');
 
 const app = buildApp();
 
@@ -23,6 +24,11 @@ async function insertUser({ role = 'Admin', name, username, password = 'testpass
      VALUES ($1,$2,$3,$4,$5,$6,'Active',$7,$8)`,
     [id, name || `Test ${role}`, finalUsername, passwordHash, role, role, 'https://example.com/a.png', baseSalaryPkr]
   );
+  // Mirrors what the real POST /api/users and /api/auth/register handlers do,
+  // so tests built on this helper see the same default-group membership real
+  // accounts get -- this insert bypasses those routes, so it doesn't happen
+  // automatically the way it would for a real request.
+  await joinDefaultGroups(pool, id);
   return { id, username: finalUsername, password };
 }
 

@@ -25,6 +25,12 @@ describe('auth bootstrap flow', () => {
     expect(res.body.needsBootstrap).toBe(false);
   });
 
+  it('the bootstrap Admin is automatically a member of all 3 seeded default message groups', async () => {
+    const token = await loginToken('bootstrap_admin', 'bootstrap123');
+    const groups = await request(app).get('/api/message-groups').set('Authorization', `Bearer ${token}`);
+    expect(groups.body.map(g => g.id).sort()).toEqual(['announcements', 'general-lounge', 'qa-support']);
+  });
+
   it('a second call to /register is permanently rejected once any user exists', async () => {
     const res = await request(app)
       .post('/api/auth/register')

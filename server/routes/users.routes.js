@@ -5,6 +5,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { requireRole } = require('../middleware/auth');
 const genId = require('../utils/genId');
 const { passwordError } = require('../utils/validatePassword');
+const { joinDefaultGroups } = require('../utils/defaultGroups');
 const {
   listPublicUsers, toPublicUser, findUserRowByUsername, findUserRowById,
   getAllowedCampaignIds, shareCampaignAccess
@@ -72,6 +73,7 @@ router.post('/', asyncHandler(async (req, res) => {
     for (const campaignId of campaignIds) {
       await client.query('INSERT INTO campaign_access (campaign_id, user_id) VALUES ($1,$2)', [campaignId, id]);
     }
+    await joinDefaultGroups(client, id);
     await client.query('COMMIT');
   } catch (err) {
     await client.query('ROLLBACK');

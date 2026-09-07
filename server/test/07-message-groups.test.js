@@ -1,6 +1,32 @@
 const request = require('supertest');
 const { app, uid, createAdmin, createCampaign, createAgentViaApi, insertUser, loginToken } = require('./helpers');
 
+describe('default group auto-join on account creation', () => {
+  it('a newly created Agent is automatically a member of all 3 seeded default groups', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+
+    const groups = await request(app).get('/api/message-groups').set('Authorization', `Bearer ${agent.token}`);
+    const groupIds = groups.body.map(g => g.id).sort();
+    expect(groupIds).toEqual(['announcements', 'general-lounge', 'qa-support']);
+  });
+
+  it('regression: an agent can post to a default group and the Admin can read it without any manual group setup', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+
+    const post = await request(app).post('/api/messages').set('Authorization', `Bearer ${agent.token}`)
+      .send({ channel: 'qa-support', text: 'freshly created agent, default group relay' });
+    expect(post.status).toBe(201);
+
+    const adminRead = await request(app).get('/api/messages?channel=qa-support').set('Authorization', `Bearer ${admin.token}`);
+    expect(adminRead.status).toBe(200);
+    expect(adminRead.body.some(m => m.id === post.body.id)).toBe(true);
+  });
+});
+
 describe('message group membership scoping', () => {
   it('Admin can create a group with specific members', async () => {
     const admin = await createAdmin();

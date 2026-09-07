@@ -6,6 +6,7 @@ const config = require('../config');
 const asyncHandler = require('../utils/asyncHandler');
 const genId = require('../utils/genId');
 const { passwordError } = require('../utils/validatePassword');
+const { joinDefaultGroups } = require('../utils/defaultGroups');
 const { requireAuth } = require('../middleware/auth');
 const { findUserRowByUsername, findUserRowById, toPublicUser } = require('../db/usersRepo');
 
@@ -70,6 +71,7 @@ router.post('/register', asyncHandler(async (req, res) => {
       'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'
     ]
   );
+  await joinDefaultGroups(pool, id);
 
   const row = await findUserRowByUsername(username);
   const token = issueToken(row);
