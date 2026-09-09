@@ -19,6 +19,7 @@ import ReportsAnalytics from './components/Shared/ReportsAnalytics';
 import KnowledgeBase from './components/Shared/KnowledgeBase';
 import SupportTickets from './components/Shared/SupportTickets';
 import TeamManagement from './components/Shared/TeamManagement';
+import MessageGroupManagement from './components/Shared/MessageGroupManagement';
 import TaskNotificationDrawer from './components/TaskNotificationDrawer';
 import ChatDrawer from './components/Chat/ChatDrawer';
 import AuthModal from './components/Auth/AuthModal';
