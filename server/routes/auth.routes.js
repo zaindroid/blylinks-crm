@@ -103,7 +103,7 @@ router.patch('/change-password', requireAuth, asyncHandler(async (req, res) => {
   }
 
   const newHash = await bcrypt.hash(newPassword, 10);
-  await pool.query('UPDATE users SET password_hash = $1 WHERE id = $2', [newHash, req.user.id]);
+  await pool.query('UPDATE users SET password_hash = $1, must_change_password = false WHERE id = $2', [newHash, req.user.id]);
   res.json({ status: 'password updated' });
 }));
 

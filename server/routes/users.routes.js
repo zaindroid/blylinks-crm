@@ -5,6 +5,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { requireRole } = require('../middleware/auth');
 const genId = require('../utils/genId');
 const { passwordError } = require('../utils/validatePassword');
+const { generateTempPassword } = require('../utils/tempPassword');
 const { joinDefaultGroups } = require('../utils/defaultGroups');
 const {
   listPublicUsers, toPublicUser, findUserRowByUsername, findUserRowById,
@@ -124,6 +125,44 @@ router.patch('/:id/base-salary', requireRole('Admin'), asyncHandler(async (req, 
   await pool.query('UPDATE users SET base_salary_pkr = $2 WHERE id = $1', [id, Number(baseSalaryPkr)]);
   const updated = await findUserRowById(id);
   res.json(await toPublicUser(updated));
+}));
+
+// Admin/Supervisor-mediated "forgot password": this app has no email to send
+// a reset link to, so someone locked out gets back in via whoever manages
+// their account setting a fresh temp password -- same scoping as removing a
+// user (Admin: anyone; Supervisor: their own Agents only). The temp password
+// is returned exactly once in this response and never stored anywhere in
+// recoverable form; the account is flagged so it only works long enough to
+// be replaced (enforced server-side by blockIfMustChangePassword, not just
+// a frontend nudge).
+router.patch('/:id/reset-password', asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (id === req.user.id) {
+    return res.status(400).json({ error: 'Use Change Password for your own account, not this' });
+  }
+
+  const target = await findUserRowById(id);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+
+  if (req.user.role === 'Admin') {
+    // no further restriction
+  } else if (req.user.role === 'Supervisor') {
+    if (target.role !== 'Agent') {
+      return res.status(403).json({ error: 'Supervisors can only reset Agent passwords' });
+    }
+    const inScope = await shareCampaignAccess(req.user.id, id);
+    if (!inScope) {
+      return res.status(403).json({ error: 'This agent is outside your campaign access' });
+    }
+  } else {
+    return res.status(403).json({ error: 'You do not have permission to reset passwords' });
+  }
+
+  const tempPassword = generateTempPassword();
+  const passwordHash = await bcrypt.hash(tempPassword, 10);
+  await pool.query('UPDATE users SET password_hash = $2, must_change_password = true WHERE id = $1', [id, passwordHash]);
+
+  res.json({ id, tempPassword });
 }));
 
 router.delete('/:id', asyncHandler(async (req, res) => {

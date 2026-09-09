@@ -30,7 +30,7 @@ const requireAuth = asyncHandler(async (req, res, next) => {
     return res.status(401).json({ error: 'This account is no longer active' });
   }
 
-  req.user = { id: current.id, role: current.role };
+  req.user = { id: current.id, role: current.role, mustChangePassword: current.must_change_password === true };
   next();
 });
 
@@ -43,4 +43,18 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { requireAuth, requireRole };
+// After an admin/supervisor-mediated password reset, the account is flagged
+// must_change_password so the temp password only works long enough to be
+// replaced. Enforced here, not just as a frontend nudge -- a temp password
+// leaking (verbally relayed, written down) shouldn't grant full standing
+// access just because the client-side UI happens to show a modal. Mounted
+// on every protected route except the change-password endpoint itself,
+// which is the one thing this state must still allow through.
+function blockIfMustChangePassword(req, res, next) {
+  if (req.user?.mustChangePassword) {
+    return res.status(403).json({ error: 'You must set a new password before continuing', mustChangePassword: true });
+  }
+  next();
+}
+
+module.exports = { requireAuth, requireRole, blockIfMustChangePassword };

@@ -13,7 +13,8 @@ function reshapeUser(row, allowedCampaignIds) {
     status: row.status,
     avatar: row.avatar,
     shift: row.shift,
-    baseSalaryPkr: row.base_salary_pkr !== undefined ? Number(row.base_salary_pkr) : 0
+    baseSalaryPkr: row.base_salary_pkr !== undefined ? Number(row.base_salary_pkr) : 0,
+    mustChangePassword: row.must_change_password === true
   };
 }
 
@@ -48,7 +49,7 @@ async function findUserRowById(id) {
 // request, so it only selects what that check actually needs rather than the
 // full row (password hash included) that findUserRowById returns.
 async function findAuthInfoById(id) {
-  const { rows } = await pool.query('SELECT id, role, status FROM users WHERE id = $1', [id]);
+  const { rows } = await pool.query('SELECT id, role, status, must_change_password FROM users WHERE id = $1', [id]);
   return rows[0] || null;
 }
 

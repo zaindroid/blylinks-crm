@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Lock, X, CheckCircle } from 'lucide-react';
 import { changePassword } from '../../api/auth';
 
-export default function ChangePasswordModal({ onClose }) {
+export default function ChangePasswordModal({ onClose, mandatory = false, onSuccess }) {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -25,6 +25,7 @@ export default function ChangePasswordModal({ onClose }) {
     try {
       await changePassword(currentPassword, newPassword);
       setSuccess(true);
+      onSuccess?.();
     } catch (err) {
       setError(err.message || 'Could not change password.');
     } finally {
@@ -36,9 +37,15 @@ export default function ChangePasswordModal({ onClose }) {
     <div className="modal-overlay">
       <div className="modal-content" style={{ maxWidth: '420px' }}>
         <div className="modal-header">
-          <span className="modal-title flex-align"><Lock size={16} /> Change Password</span>
-          <button className="icon-btn" onClick={onClose}><X size={18} /></button>
+          <span className="modal-title flex-align"><Lock size={16} /> {mandatory ? 'Set a New Password' : 'Change Password'}</span>
+          {!mandatory && <button className="icon-btn" onClick={onClose}><X size={18} /></button>}
         </div>
+
+        {mandatory && !success && (
+          <div className="mandatory-pw-notice">
+            You're signing in with a temporary password. Set a new one to continue.
+          </div>
+        )}
 
         {success ? (
           <div className="modal-body">
@@ -91,7 +98,7 @@ export default function ChangePasswordModal({ onClose }) {
               </div>
             </div>
             <div className="modal-footer">
-              <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
+              {!mandatory && <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>}
               <button type="submit" className="btn btn-primary" disabled={submitting}>
                 {submitting ? 'Saving...' : 'Update Password'}
               </button>
@@ -102,6 +109,7 @@ export default function ChangePasswordModal({ onClose }) {
 
       <style>{`
         .success-alert { background: var(--status-success-bg); border: 1px solid var(--status-success-border); color: var(--status-success); padding: 0.6rem 0.85rem; border-radius: var(--radius-sm); font-size: 0.85rem; gap: 0.5rem; }
+        .mandatory-pw-notice { font-size: 0.8rem; color: var(--text-muted); padding: 0 1.25rem 0.5rem; line-height: 1.5; }
       `}</style>
     </div>
   );

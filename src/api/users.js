@@ -19,3 +19,10 @@ export function updateUserCampaigns(id, campaignIds) {
 export function updateBaseSalary(id, baseSalaryPkr) {
   return apiFetch(`/users/${id}/base-salary`, { method: 'PATCH', body: { baseSalaryPkr } });
 }
+
+// Admin/Supervisor-mediated "forgot password" -- returns { id, tempPassword }.
+// The temp password is shown exactly once by the caller; it is never stored
+// or retrievable again after this response.
+export function resetUserPassword(id) {
+  return apiFetch(`/users/${id}/reset-password`, { method: 'PATCH' });
+}

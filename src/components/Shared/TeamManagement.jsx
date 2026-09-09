@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { UserPlus, Trash2, Settings, X, Users as UsersIcon, DollarSign } from 'lucide-react';
+import { UserPlus, Trash2, Settings, X, Users as UsersIcon, DollarSign, KeyRound, Copy, Check } from 'lucide-react';
 import { formatPKR } from '../../utils/currency';
 
 const ROLE_OPTIONS = ['Admin', 'Supervisor', 'Agent'];
 
-export default function TeamManagement({ currentUser, users, projects, onAddUser, onDeactivateUser, onUpdateUserCampaigns, onUpdateBaseSalary }) {
+export default function TeamManagement({ currentUser, users, projects, onAddUser, onDeactivateUser, onUpdateUserCampaigns, onUpdateBaseSalary, onResetPassword }) {
   const isAdmin = currentUser.role === 'Admin';
   const isSupervisor = currentUser.role === 'Supervisor';
 
@@ -13,6 +13,9 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
   const [editingSalaryFor, setEditingSalaryFor] = useState(null);
   const [salaryValue, setSalaryValue] = useState('');
   const [error, setError] = useState('');
+  const [resetResult, setResetResult] = useState(null); // { name, tempPassword }
+  const [resetError, setResetError] = useState('');
+  const [copied, setCopied] = useState(false);
 
   const ownCampaignIds = currentUser.allowedCampaignIds || [];
   const assignableCampaigns = isAdmin ? projects : projects.filter(p => ownCampaignIds.includes(p.id));
@@ -67,6 +70,27 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
 
   const handleRemove = (user) => {
     onDeactivateUser(user.id);
+  };
+
+  const handleResetPassword = async (user) => {
+    setResetError('');
+    try {
+      const { tempPassword } = await onResetPassword(user.id);
+      setResetResult({ name: user.name, tempPassword });
+      setCopied(false);
+    } catch (err) {
+      setResetError(err.message || 'Could not reset password.');
+    }
+  };
+
+  const copyTempPassword = async () => {
+    try {
+      await navigator.clipboard.writeText(resetResult.tempPassword);
+      setCopied(true);
+    } catch {
+      // Clipboard access can be blocked in some browser contexts -- the
+      // password is still shown on screen for manual copy either way.
+    }
   };
 
   const handleSaveAccess = async (e) => {
@@ -137,6 +161,11 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
                       {isAdmin && (
                         <button className="btn btn-secondary btn-sm" onClick={() => openEditSalary(u)} title="Edit base salary">
                           <DollarSign size={13} /> Salary
+                        </button>
+                      )}
+                      {u.id !== currentUser.id && u.status === 'Active' && (isAdmin || u.role === 'Agent') && (
+                        <button className="btn btn-secondary btn-sm" onClick={() => handleResetPassword(u)} title="Reset this account's password">
+                          <KeyRound size={13} /> Reset Password
                         </button>
                       )}
                       {u.id !== currentUser.id && u.status === 'Active' && (isAdmin || u.role === 'Agent') && (
@@ -278,9 +307,54 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
         </div>
       )}
 
+      {resetResult && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '420px' }}>
+            <div className="modal-header">
+              <span className="modal-title flex-align"><KeyRound size={16} /> Password Reset — {resetResult.name}</span>
+              <button className="icon-btn" onClick={() => setResetResult(null)}><X size={18} /></button>
+            </div>
+            <div className="modal-body">
+              <div className="reset-pw-warning">
+                This is shown once and cannot be retrieved again. Share it with {resetResult.name} through a secure channel — they'll be required to set their own password the next time they log in.
+              </div>
+              <div className="temp-password-box">
+                <span className="temp-password-value">{resetResult.tempPassword}</span>
+                <button type="button" className="icon-btn-sm" onClick={copyTempPassword} title="Copy to clipboard">
+                  {copied ? <Check size={15} className="text-success" /> : <Copy size={15} />}
+                </button>
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-primary" onClick={() => setResetResult(null)}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {resetError && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '380px' }}>
+            <div className="modal-header">
+              <span className="modal-title">Could Not Reset Password</span>
+              <button className="icon-btn" onClick={() => setResetError('')}><X size={18} /></button>
+            </div>
+            <div className="modal-body">
+              <div className="error-alert">{resetError}</div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-primary" onClick={() => setResetError('')}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         .agent-checkboxes-list { display: flex; flex-direction: column; gap: 0.4rem; background: var(--bg-primary); padding: 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); }
         .agent-checkbox-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; cursor: pointer; }
+        .reset-pw-warning { font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 0.85rem; }
+        .temp-password-box { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.65rem 0.85rem; }
+        .temp-password-value { font-family: monospace; font-size: 1rem; font-weight: 700; letter-spacing: 0.03em; color: var(--text-main); }
       `}</style>
     </div>
   );

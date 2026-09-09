@@ -120,7 +120,9 @@ export default function Navbar({
                   notifications.map((n, idx) => (
                     <div key={idx} className={`notification-item ${!n.read ? 'unread' : ''}`}>
                       <div className="notif-icon">
-                        {n.type === 'alert' ? <AlertCircle size={14} className="text-danger" /> : <CheckCircle size={14} className="text-success" />}
+                        {n.type === 'alert' ? <AlertCircle size={14} className="text-danger" />
+                          : n.type === 'message' ? <MessageSquare size={14} className="text-accent" />
+                          : <CheckCircle size={14} className="text-success" />}
                       </div>
                       <div className="notif-content">
                         <div className="notif-title">{n.title}</div>

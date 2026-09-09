@@ -22,13 +22,14 @@ import TeamManagement from './components/Shared/TeamManagement';
 import TaskNotificationDrawer from './components/TaskNotificationDrawer';
 import ChatDrawer from './components/Chat/ChatDrawer';
 import AuthModal from './components/Auth/AuthModal';
+import ChangePasswordModal from './components/Auth/ChangePasswordModal';
 import SaleCelebration from './components/Shared/SaleCelebration';
 import { requestNotificationPermission, showDesktopNotification } from './utils/notifications';
 import { randomMotivationalQuote } from './utils/motivationalQuotes';
 
 import { getToken, setToken, decodeToken } from './api/client';
 import { logout as apiLogout } from './api/auth';
-import { fetchUsers, createUser, deactivateUser, updateUserCampaigns, updateBaseSalary } from './api/users';
+import { fetchUsers, createUser, deactivateUser, updateUserCampaigns, updateBaseSalary, resetUserPassword } from './api/users';
 import { fetchCampaigns, createCampaign, updateCampaign, toggleCampaignStatus } from './api/campaigns';
 import { fetchSales, submitSale, approveSale, rejectSale } from './api/sales';
 import { fetchAttendance, clockIn, clockOut, updateAttendanceStatus } from './api/attendance';
@@ -125,7 +126,18 @@ export default function App() {
           setToken(null);
         }
       })
-      .catch(() => setToken(null))
+      .catch(err => {
+        // A still-valid token whose account is mid-forced-reset gets 403'd on
+        // every endpoint except change-password (server-enforced, not just a
+        // frontend nudge) -- that's a real, valid session, not an invalid one.
+        // Restore it straight into the mandatory-change gate instead of
+        // discarding the token and bouncing back to the login screen.
+        if (err.mustChangePassword) {
+          setCurrentUser({ id: payload.sub, role: payload.role, mustChangePassword: true });
+        } else {
+          setToken(null);
+        }
+      })
       .finally(() => setAuthChecking(false));
   }, []);
 
@@ -213,6 +225,17 @@ export default function App() {
             if (chatPanelStateRef.current !== 'open') {
               setChatUnreadCount(c => c + incoming.length);
             }
+            // A badge on the chat icon is easy to miss if you're not looking
+            // at the navbar -- surface it the same way a sale approval does,
+            // as an actual toast + bell-dropdown entry, regardless of which
+            // page or panel state you're in.
+            const latest = incoming[incoming.length - 1];
+            const notif = incoming.length === 1
+              ? { title: `New message from ${latest.senderName}`, message: latest.text, time: 'Just now', read: false, type: 'message' }
+              : { title: `${incoming.length} new messages`, message: `Latest from ${latest.senderName}: ${latest.text}`, time: 'Just now', read: false, type: 'message' };
+            setNotifications(n => [notif, ...n]);
+            setLatestNotification(notif);
+            showDesktopNotification(notif.title, notif.message);
           }
         }
         setMessages(messagesData);
@@ -424,6 +447,12 @@ export default function App() {
     setAllUsers(await fetchUsers());
   };
 
+  const handleResetPassword = async (userId) => {
+    const result = await resetUserPassword(userId);
+    setAllUsers(await fetchUsers());
+    return result;
+  };
+
   // Project Handlers
   const handleAddProject = async (newProj) => {
     await createCampaign({
@@ -501,6 +530,27 @@ export default function App() {
 
   if (!currentUser) {
     return <AuthModal isOpen closable={false} onClose={() => {}} onAuthenticated={handleAuthenticated} />;
+  }
+
+  // Enforced server-side too (blockIfMustChangePassword rejects every other
+  // endpoint while this is true) -- this just gives it a coherent UI instead
+  // of every API call silently 403ing until they figure out why.
+  if (currentUser.mustChangePassword) {
+    return (
+      <ChangePasswordModal
+        mandatory
+        onSuccess={async () => {
+          // currentUser may only be the minimal { id, role } shape restored
+          // from a page refresh mid-reset (fetchUsers() was blocked until
+          // just now) -- re-fetch rather than just flipping the flag in
+          // place, so the rest of the app gets a fully-populated user.
+          const users = await fetchUsers();
+          const match = users.find(u => u.id === currentUser.id);
+          setAllUsers(users);
+          setCurrentUser(match || { ...currentUser, mustChangePassword: false });
+        }}
+      />
+    );
   }
 
   return (
@@ -633,6 +683,7 @@ export default function App() {
               onDeactivateUser={handleDeactivateUser}
               onUpdateUserCampaigns={handleUpdateUserCampaigns}
               onUpdateBaseSalary={handleUpdateBaseSalary}
+              onResetPassword={handleResetPassword}
             />
           )}
 

@@ -4,7 +4,7 @@ const pinoHttp = require('pino-http');
 const logger = require('./logger');
 const config = require('./config');
 const errorHandler = require('./middleware/errorHandler');
-const { requireAuth } = require('./middleware/auth');
+const { requireAuth, blockIfMustChangePassword } = require('./middleware/auth');
 const { helmetMiddleware, authLimiter, apiLimiter } = require('./middleware/security');
 const healthRoutes = require('./routes/health');
 const openapiSpec = require('./openapi.json');
@@ -46,19 +46,19 @@ function buildApp() {
 
   app.use('/api/auth', authLimiter, authRoutes);
 
-  app.use('/api/users', requireAuth, apiLimiter, usersRoutes);
-  app.use('/api/campaigns', requireAuth, apiLimiter, campaignsRoutes);
-  app.use('/api/sales', requireAuth, apiLimiter, salesRoutes);
-  app.use('/api/attendance', requireAuth, apiLimiter, attendanceRoutes);
-  app.use('/api/targets', requireAuth, apiLimiter, targetsRoutes);
-  app.use('/api/callbacks', requireAuth, apiLimiter, callbacksRoutes);
-  app.use('/api/leads', requireAuth, apiLimiter, leadsRoutes);
-  app.use('/api/payroll', requireAuth, apiLimiter, payrollRoutes);
-  app.use('/api/messages', requireAuth, apiLimiter, messagesRoutes);
-  app.use('/api/message-groups', requireAuth, apiLimiter, messageGroupsRoutes);
-  app.use('/api/kb-articles', requireAuth, apiLimiter, kbRoutes);
-  app.use('/api/tickets', requireAuth, apiLimiter, ticketsRoutes);
-  app.use('/api/admin', requireAuth, apiLimiter, adminRoutes);
+  app.use('/api/users', requireAuth, blockIfMustChangePassword, apiLimiter, usersRoutes);
+  app.use('/api/campaigns', requireAuth, blockIfMustChangePassword, apiLimiter, campaignsRoutes);
+  app.use('/api/sales', requireAuth, blockIfMustChangePassword, apiLimiter, salesRoutes);
+  app.use('/api/attendance', requireAuth, blockIfMustChangePassword, apiLimiter, attendanceRoutes);
+  app.use('/api/targets', requireAuth, blockIfMustChangePassword, apiLimiter, targetsRoutes);
+  app.use('/api/callbacks', requireAuth, blockIfMustChangePassword, apiLimiter, callbacksRoutes);
+  app.use('/api/leads', requireAuth, blockIfMustChangePassword, apiLimiter, leadsRoutes);
+  app.use('/api/payroll', requireAuth, blockIfMustChangePassword, apiLimiter, payrollRoutes);
+  app.use('/api/messages', requireAuth, blockIfMustChangePassword, apiLimiter, messagesRoutes);
+  app.use('/api/message-groups', requireAuth, blockIfMustChangePassword, apiLimiter, messageGroupsRoutes);
+  app.use('/api/kb-articles', requireAuth, blockIfMustChangePassword, apiLimiter, kbRoutes);
+  app.use('/api/tickets', requireAuth, blockIfMustChangePassword, apiLimiter, ticketsRoutes);
+  app.use('/api/admin', requireAuth, blockIfMustChangePassword, apiLimiter, adminRoutes);
 
   const distDir = path.join(__dirname, '..', 'dist');
   // Vite's built JS/CSS filenames are content-hashed, so they're safe to cache

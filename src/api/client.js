@@ -33,7 +33,11 @@ export async function apiFetch(path, opts = {}) {
 
   if (!res.ok) {
     const payload = await res.json().catch(() => ({}));
-    throw new Error(payload.error || res.statusText);
+    const err = new Error(payload.error || res.statusText);
+    // Preserved so callers can react to specific server-side flags (e.g. a
+    // forced password reset) rather than just the human-readable message.
+    if (payload.mustChangePassword) err.mustChangePassword = true;
+    throw err;
   }
 
   return res.status === 204 ? null : res.json();

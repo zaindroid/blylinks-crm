@@ -61,4 +61,27 @@ describe('ChangePasswordModal', () => {
     await user.click(screen.getByRole('button', { name: /cancel/i }));
     expect(onClose).toHaveBeenCalled();
   });
+
+  describe('mandatory mode (forced reset)', () => {
+    it('shows no Cancel button and no close (X) button -- genuinely non-dismissible', () => {
+      render(<ChangePasswordModal mandatory onSuccess={vi.fn()} />);
+      expect(screen.queryByRole('button', { name: /cancel/i })).not.toBeInTheDocument();
+      expect(screen.queryByLabelText(/close/i)).not.toBeInTheDocument();
+    });
+
+    it('explains why, since the user did not ask to be here', () => {
+      render(<ChangePasswordModal mandatory onSuccess={vi.fn()} />);
+      expect(screen.getByText(/temporary password/i)).toBeInTheDocument();
+    });
+
+    it('calls onSuccess (not just onClose) once the password is actually changed', async () => {
+      authApi.changePassword.mockResolvedValue({ status: 'password updated' });
+      const onSuccess = vi.fn();
+      const user = userEvent.setup();
+      render(<ChangePasswordModal mandatory onSuccess={onSuccess} />);
+      await fillAndSubmit(user);
+
+      await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    });
+  });
 });
