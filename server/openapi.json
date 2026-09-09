@@ -13,6 +13,7 @@
     "/api/users/{id}": { "delete": { "summary": "Deactivate a user (Admin: anyone; Supervisor: own-scope Agents only)", "responses": { "200": { "description": "OK" } } } },
     "/api/users/{id}/campaigns": { "patch": { "summary": "Replace a user's campaign access (Admin)", "responses": { "200": { "description": "OK" } } } },
     "/api/users/{id}/base-salary": { "patch": { "summary": "Set a user's monthly base salary in PKR, used by payroll generation (Admin)", "responses": { "200": { "description": "OK" } } } },
+    "/api/users/{id}/reset-password": { "patch": { "summary": "Admin/Supervisor-mediated forgot-password: generates a temp password (returned once, in the response), flags the account must_change_password. Admin: anyone but self; Supervisor: own-scope Agents only.", "responses": { "200": { "description": "OK" } } } },
     "/api/campaigns": {
       "get": { "summary": "List campaigns", "responses": { "200": { "description": "OK" } } },
       "post": { "summary": "Create campaign (Admin)", "responses": { "201": { "description": "Created" } } }
