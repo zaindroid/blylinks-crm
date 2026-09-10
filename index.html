@@ -6,7 +6,28 @@
     <title>Blylinks Operations Portal</title>
     <meta name="description" content="Professional BPO Operations, Lead CRM and Sales Management System for Blylinks." />
     <meta name="theme-color" content="#0c0b14" />
-    <link rel="icon" type="image/png" href="/blylinks-logo.png" />
+
+    <!-- Favicons. /favicon.ico is what Google's crawler probes first for the
+         search-results icon; the sized PNGs cover browser tabs and mobile.
+         An explicit set here (rather than relying on a single <link>) is what
+         lets Google replace a stale favicon cached from an earlier deploy. -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/favicon-48.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon-192.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
+
+    <!-- Explicit so link-preview and search scrapers can't fall back to
+         whatever the project was originally scaffolded with. -->
+    <meta property="og:title" content="Blylinks Operations Portal" />
+    <meta property="og:description" content="Professional BPO Operations, Lead CRM and Sales Management System for Blylinks." />
+    <meta property="og:image" content="/favicon-512.png" />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:image" content="/favicon-512.png" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@500;600;700&display=swap" rel="stylesheet" />
