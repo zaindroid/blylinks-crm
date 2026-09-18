@@ -23,6 +23,8 @@ function reshape(row) {
     clockIn: row.clock_in,
     clockOut: row.clock_out,
     status: row.status,
+    // Survives clock-out (status becomes 'Clocked Out'); this is what the weekly tardy rule counts.
+    tardy: row.tardy,
     totalHours: row.total_hours
   };
 }
@@ -74,10 +76,11 @@ router.get('/', asyncHandler(async (req, res) => {
 router.post('/clock-in', asyncHandler(async (req, res) => {
   const id = genId('att');
   const moment = pktMoment();
+  const status = clockInStatus(moment.minutesIntoDay);
   await pool.query(
-    `INSERT INTO attendance_logs (id, agent_id, log_date, clock_in, clock_out, status, total_hours)
-     VALUES ($1,$2,$3,$4,'--:--',$5,'0h 01m (Active)')`,
-    [id, req.user.id, moment.date, moment.time, clockInStatus(moment.minutesIntoDay)]
+    `INSERT INTO attendance_logs (id, agent_id, log_date, clock_in, clock_out, status, tardy, total_hours)
+     VALUES ($1,$2,$3,$4,'--:--',$5,$6,'0h 01m (Active)')`,
+    [id, req.user.id, moment.date, moment.time, status, status === 'Tardy']
   );
   const { rows } = await pool.query(`${SELECT_ATTENDANCE} WHERE a.id = $1`, [id]);
   res.status(201).json(reshape(rows[0]));
@@ -102,7 +105,14 @@ router.post('/clock-out', asyncHandler(async (req, res) => {
 router.patch('/:id', requireRole('Admin', 'Supervisor'), asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { status } = req.body;
-  await pool.query('UPDATE attendance_logs SET status = $2 WHERE id = $1', [id, status]);
+  // An Admin/Supervisor override also decides whether the day counts as tardy: marking it Tardy/Late
+  // makes it count towards the weekly rule, marking it Present excuses it.
+  await pool.query(
+    `UPDATE attendance_logs SET status = $2,
+       tardy = CASE WHEN $2 IN ('Tardy', 'Late') THEN true WHEN $2 = 'Present' THEN false ELSE tardy END
+     WHERE id = $1`,
+    [id, status]
+  );
   const { rows } = await pool.query(`${SELECT_ATTENDANCE} WHERE a.id = $1`, [id]);
   if (!rows[0]) return res.status(404).json({ error: 'Attendance log not found' });
   res.json(reshape(rows[0]));

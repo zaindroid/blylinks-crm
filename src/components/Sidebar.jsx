@@ -16,7 +16,8 @@ import {
   UserPlus,
   ChevronLeft,
   ChevronRight,
-  MessageSquare
+  MessageSquare,
+  PhoneOff
 } from 'lucide-react';
 
 const LOGO_SRC = '/blylinks-logo.png';
@@ -32,6 +33,7 @@ function getNavSections(role, pendingQaCount) {
       items: [
         { id: 'my-sales', label: 'My Sales', icon: DollarSign },
         { id: 'callbacks', label: 'Callbacks', icon: PhoneCall },
+        { id: 'dnc-check', label: 'DNC Check', icon: PhoneOff },
         { id: 'leads', label: 'My Leads', icon: Users },
         { id: 'attendance', label: 'Attendance', icon: Clock }
       ]
@@ -46,6 +48,7 @@ function getNavSections(role, pendingQaCount) {
         { id: 'leads', label: 'Lead CRM', icon: Users },
         { id: 'team-attendance', label: 'Team Attendance', icon: UserCheck },
         { id: 'team', label: 'Team & Access', icon: UserPlus },
+        { id: 'dnc-manage', label: 'DNC Lists', icon: PhoneOff },
         { id: 'message-groups', label: 'Message Groups', icon: MessageSquare }
       ]
     });

@@ -17,6 +17,8 @@ import AdminProjects from './components/AdminPortal/AdminProjects';
 import LeadManagement from './components/Shared/LeadManagement';
 import ReportsAnalytics from './components/Shared/ReportsAnalytics';
 import KnowledgeBase from './components/Shared/KnowledgeBase';
+import DncCheck from './components/Shared/DncCheck';
+import DncManagement from './components/Shared/DncManagement';
 import SupportTickets from './components/Shared/SupportTickets';
 import TeamManagement from './components/Shared/TeamManagement';
 import MessageGroupManagement from './components/Shared/MessageGroupManagement';
@@ -780,6 +782,14 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'dnc-check' && currentUser.role === 'Agent' && (
+            <DncCheck projects={projects} />
+          )}
+
+          {activeTab === 'dnc-manage' && (currentUser.role === 'Admin' || currentUser.role === 'Supervisor') && (
+            <DncManagement />
+          )}
+
           {activeTab === 'message-groups' && (currentUser.role === 'Admin' || currentUser.role === 'Supervisor') && (
             <MessageGroupManagement
               currentUser={currentUser}
@@ -802,6 +812,7 @@ export default function App() {
           {activeTab === 'payroll' && (
             <AdminPayroll
               payroll={payroll}
+              users={allUsers}
               onTogglePaymentStatus={handleTogglePaymentStatus}
               onGeneratePayroll={handleGeneratePayroll}
               onUpdatePayrollAdjustments={handleUpdatePayrollAdjustments}

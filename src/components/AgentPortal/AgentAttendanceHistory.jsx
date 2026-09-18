@@ -69,9 +69,12 @@ export default function AgentAttendanceHistory({ currentUser, attendanceLogs, at
                   <td className="font-mono text-muted">{log.clockOut}</td>
                   <td>{log.totalHours}</td>
                   <td>
-                    <span className={`badge ${log.status === 'Present' ? 'badge-success' : log.status === 'Late' ? 'badge-warning' : 'badge-error'}`}>
+                    <span className={`badge ${log.status === 'Present' ? 'badge-success' : log.status === 'Late' || log.status === 'Tardy' ? 'badge-warning' : log.status === 'Clocked Out' ? 'badge-neutral' : 'badge-error'}`}>
                       {log.status}
                     </span>
+                    {log.tardy && log.status !== 'Tardy' && log.status !== 'Late' && (
+                      <span className="badge badge-warning" style={{ marginLeft: '0.35rem' }} title="Clocked in after 8:15 PM PKT">Tardy</span>
+                    )}
                   </td>
                   <td className="text-subtle text-sm flex-align">
                     <ShieldCheck size={14} className="text-cyan" /> Verified Log

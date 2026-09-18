@@ -23,6 +23,7 @@ const messageGroupsRoutes = require('./routes/messageGroups.routes');
 const kbRoutes = require('./routes/kb.routes');
 const ticketsRoutes = require('./routes/tickets.routes');
 const adminRoutes = require('./routes/admin.routes');
+const dncRoutes = require('./routes/dnc.routes');
 
 function buildApp() {
   const app = express();
@@ -37,6 +38,10 @@ function buildApp() {
   app.set('trust proxy', 1);
 
   app.use(helmetMiddleware);
+  // A DNC file upload can be a few thousand numbers -- more than the default 100kb body limit. Only that one
+  // route gets the larger limit, and only for signed-in users (auth runs first), so an anonymous caller can
+  // never make the server buffer a big body.
+  app.use('/api/dnc/bulk', requireAuth, blockIfMustChangePassword, express.json({ limit: '1mb' }));
   app.use(express.json());
   app.use(pinoHttp({ logger }));
 
@@ -58,6 +63,7 @@ function buildApp() {
   app.use('/api/message-groups', requireAuth, blockIfMustChangePassword, apiLimiter, messageGroupsRoutes);
   app.use('/api/kb-articles', requireAuth, blockIfMustChangePassword, apiLimiter, kbRoutes);
   app.use('/api/tickets', requireAuth, blockIfMustChangePassword, apiLimiter, ticketsRoutes);
+  app.use('/api/dnc', requireAuth, blockIfMustChangePassword, apiLimiter, dncRoutes);
   app.use('/api/admin', requireAuth, blockIfMustChangePassword, apiLimiter, adminRoutes);
 
   const distDir = path.join(__dirname, '..', 'dist');

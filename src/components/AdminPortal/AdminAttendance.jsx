@@ -61,6 +61,9 @@ export default function AdminAttendance({ attendanceLogs, users, onUpdateAttenda
                   <span className={`badge ${statusBadgeClass(log.status)}`}>
                     {log.status}
                   </span>
+                  {log.tardy && log.status !== 'Tardy' && log.status !== 'Late' && (
+                    <span className="badge badge-warning" style={{ marginLeft: '0.35rem' }} title="Clocked in after 8:15 PM PKT">Tardy</span>
+                  )}
                 </td>
                 <td>
                   <select

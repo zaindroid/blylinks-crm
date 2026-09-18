@@ -61,4 +61,13 @@ const apiLimiter = makeLimiter({
   keyGenerator: (req) => req.user?.id || ipKeyGenerator(req.ip)
 });
 
-module.exports = { helmetMiddleware, authLimiter, apiLimiter };
+// A DNC lookup returns a yes/no for one number, so the only way to learn the list is to ask about numbers
+// one at a time. A few dozen checks a minute is far beyond any agent working a call queue, but is too slow
+// to usefully enumerate a list -- so this stricter, per-user cap sits on top of the general one.
+const dncCheckLimiter = makeLimiter({
+  windowMs: 60 * 1000,
+  limit: 60,
+  keyGenerator: (req) => req.user?.id || ipKeyGenerator(req.ip)
+});
+
+module.exports = { helmetMiddleware, authLimiter, apiLimiter, dncCheckLimiter };
