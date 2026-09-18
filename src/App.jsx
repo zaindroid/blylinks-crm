@@ -486,11 +486,6 @@ export default function App() {
   };
 
   // Target Handlers
-  const handleUpdateTarget = async (agentId, updatedTarget) => {
-    await updateTarget(agentId, updatedTarget);
-    setTargets(await fetchTargets());
-  };
-
   // Payroll Handlers
   const handleTogglePaymentStatus = async (payrollId) => {
     await togglePaymentStatus(payrollId);
@@ -825,8 +820,10 @@ export default function App() {
           {/* ADMIN-ONLY TABS */}
           {activeTab === 'targets' && (
             <AdminTargets
+              users={allUsers}
+              sales={sales}
               targets={targets}
-              onUpdateTarget={handleUpdateTarget}
+              onUpdateSalesTarget={handleUpdateSalesTarget}
             />
           )}
 

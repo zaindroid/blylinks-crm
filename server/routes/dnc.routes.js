@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db/pool');
 const asyncHandler = require('../utils/asyncHandler');
 const genId = require('../utils/genId');
+const { genUniqueId } = genId;
 const { requireRole } = require('../middleware/auth');
 const { dncCheckLimiter } = require('../middleware/security');
 const { getAllowedCampaignIds } = require('../db/usersRepo');
@@ -104,7 +105,7 @@ router.post('/', requireRole('Admin', 'Supervisor'), asyncHandler(async (req, re
   const key = phoneKey(phone);
   if (!key) return res.status(400).json({ error: 'Enter a valid phone number (7 to 15 digits).' });
 
-  const id = genId('dnc');
+  const id = genUniqueId('dnc');
   const { rows } = await pool.query(
     `INSERT INTO dnc_numbers (id, campaign_id, phone_key, phone_display, note, added_by)
      VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (campaign_id, phone_key) DO NOTHING RETURNING id`,
@@ -153,7 +154,7 @@ router.post('/bulk', requireRole('Admin', 'Supervisor'), asyncHandler(async (req
        SELECT t.id, $1, t.key, t.display, $2
        FROM unnest($3::text[], $4::text[], $5::text[]) AS t(id, key, display)
        ON CONFLICT (campaign_id, phone_key) DO NOTHING RETURNING id`,
-      [campaignId, req.user.id, keys.map(() => genId('dnc')), keys, keys.map(k => unique.get(k))]
+      [campaignId, req.user.id, keys.map(() => genUniqueId('dnc')), keys, keys.map(k => unique.get(k))]
     );
     added = rows.length;
   }

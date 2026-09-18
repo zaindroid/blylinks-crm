@@ -178,6 +178,24 @@ describe('DNC list management', () => {
   });
 });
 
+describe('row ids created in a burst', () => {
+  // Regression: bulk import used genId(), whose random part is only 24 bits per millisecond, so a large upload
+  // intermittently failed with a duplicate-primary-key 500.
+  it('genUniqueId never collides, even for 100,000 ids minted in one tight loop', () => {
+    const genId = require('../utils/genId');
+    const ids = new Set();
+    for (let i = 0; i < 100000; i++) ids.add(genId.genUniqueId('dnc'));
+    expect(ids.size).toBe(100000);
+  });
+
+  it('the old genId() does collide in a burst -- which is exactly why bulk imports must not use it', () => {
+    const genId = require('../utils/genId');
+    const ids = new Set();
+    for (let i = 0; i < 100000; i++) ids.add(genId('dnc'));
+    expect(ids.size).toBeLessThan(100000);
+  });
+});
+
 describe('DNC bulk upload', () => {
   it('imports a file\'s numbers and reports added / duplicate / invalid counts', async () => {
     const { admin, campA, agentA } = await world();
@@ -196,6 +214,14 @@ describe('DNC bulk upload', () => {
     expect(res.body.invalidSamples).toEqual(['hello', '123']);
 
     expect((await check(agentA.token, campA, '03003000003')).body.found).toBe(true);
+  });
+
+  it('the maximum-size upload (20,000 numbers) succeeds every time', async () => {
+    const { admin, campA } = await world();
+    const numbers = Array.from({ length: 20000 }, (_, i) => `0347${String(1000000 + i)}`);
+    const res = await bulk(admin.token, campA, numbers);
+    expect(res.status).toBe(201);
+    expect(res.body.added).toBe(20000);
   });
 
   it('a large file (well over the normal request-size limit) is accepted', async () => {

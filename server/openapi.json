@@ -14,6 +14,7 @@
     "/api/users/{id}/campaigns": { "patch": { "summary": "Replace a user's campaign access (Admin)", "responses": { "200": { "description": "OK" } } } },
     "/api/users/{id}/base-salary": { "patch": { "summary": "Set a user's monthly base salary in PKR, used by payroll generation (Admin)", "responses": { "200": { "description": "OK" } } } },
     "/api/users/{id}/reset-password": { "patch": { "summary": "Admin/Supervisor-mediated forgot-password: generates a temp password (returned once, in the response), flags the account must_change_password. Admin: anyone but self; Supervisor: own-scope Agents only.", "responses": { "200": { "description": "OK" } } } },
+    "/api/users/{id}/role": { "patch": { "summary": "Admin only: change any other user's role (Admin | Supervisor | Agent). Takes effect on that user's very next request. An Admin cannot change their own role.", "responses": { "200": { "description": "OK" } } } },
     "/api/campaigns": {
       "get": { "summary": "List campaigns", "responses": { "200": { "description": "OK" } } },
       "post": { "summary": "Create campaign (Admin)", "responses": { "201": { "description": "Created" } } }
@@ -31,7 +32,7 @@
     "/api/attendance/clock-out": { "post": { "summary": "Clock out", "responses": { "200": { "description": "OK" } } } },
     "/api/attendance/{id}": { "patch": { "summary": "Update attendance status (Admin/Supervisor)", "responses": { "200": { "description": "OK" } } } },
     "/api/targets": { "get": { "summary": "List targets", "responses": { "200": { "description": "OK" } } } },
-    "/api/targets/{agentId}": { "patch": { "summary": "Update agent targets (Admin)", "responses": { "200": { "description": "OK" } } } },
+    "/api/targets/{agentId}": { "patch": { "summary": "Admin: any target field. Supervisor: only monthlySalesTarget (a whole number of sales), and only for Agents sharing one of their campaigns. Update agent targets (Admin)", "responses": { "200": { "description": "OK" } } } },
     "/api/callbacks": {
       "get": { "summary": "List callbacks", "responses": { "200": { "description": "OK" } } },
       "post": { "summary": "Schedule callback", "responses": { "201": { "description": "Created" } } }
@@ -44,6 +45,17 @@
     "/api/leads/{id}/status": { "patch": { "summary": "Update lead status", "responses": { "200": { "description": "OK" } } } },
     "/api/payroll": { "get": { "summary": "List payroll records", "responses": { "200": { "description": "OK" } } } },
     "/api/payroll/generate": { "post": { "summary": "Generate/refresh payroll for a month (Admin). Body: { month: 'YYYY-MM' }. Computes base salary + commission (approved sales amount x campaign commission_rate) per active agent; preserves existing bonus/deductions on regeneration.", "responses": { "200": { "description": "OK" } } } },
+    "/api/payroll/advances": { "get": { "summary": "Admin only: salary advances with recovered/outstanding balances", "responses": { "200": { "description": "OK" } } }, "post": { "summary": "Admin only: record a salary advance { agentId, amountPkr, givenOn?, note? }. Outstanding advances are deducted automatically when payroll is calculated.", "responses": { "201": { "description": "Created" } } } },
+    "/api/payroll/advances/{id}": { "delete": { "summary": "Admin only: delete an advance. 409 once any part has been recovered from a paid payroll.", "responses": { "200": { "description": "OK" } } } },
+    "/api/dnc/check": { "post": { "summary": "Any signed-in user with access to the campaign: is this phone number on the campaign's Do-Not-Call list? Body { campaignId, phone }. Returns only { found, campaignId, campaignName }. Rate limited.", "responses": { "200": { "description": "OK" } } } },
+    "/api/dnc/summary": { "get": { "summary": "Admin/Supervisor: DNC entry count per campaign (Supervisor: own campaigns only)", "responses": { "200": { "description": "OK" } } } },
+    "/api/dnc": { "get": { "summary": "Admin/Supervisor: page through a campaign's DNC entries (?campaignId&q&limit&offset)", "responses": { "200": { "description": "OK" } } }, "post": { "summary": "Admin/Supervisor: add one number to a campaign's DNC list { campaignId, phone, note? }", "responses": { "201": { "description": "Created" } } } },
+    "/api/dnc/bulk": { "post": { "summary": "Admin/Supervisor: import a list of numbers { campaignId, numbers[] } (max 20,000). Returns added / duplicates / invalid counts.", "responses": { "201": { "description": "Created" } } } },
+    "/api/dnc/{id}": { "delete": { "summary": "Admin/Supervisor: remove a number from a DNC list", "responses": { "200": { "description": "OK" } } } },
+    "/api/access": { "get": { "summary": "Admin only: IP allowlist state { enabled, yourIp, yourIpAllowed, overrideActive, entries[] }", "responses": { "200": { "description": "OK" } } } },
+    "/api/access/entries": { "post": { "summary": "Admin only: allow an IPv4/IPv6 address or CIDR range { cidr, label? }", "responses": { "201": { "description": "Created" } } } },
+    "/api/access/entries/{id}": { "delete": { "summary": "Admin only: remove an allowed address. 409 if it would block the acting Admin while enforcement is on.", "responses": { "200": { "description": "OK" } } } },
+    "/api/access/settings": { "put": { "summary": "Admin only: switch the portal IP restriction on/off { enabled }. 409 when turning on would lock the acting Admin out.", "responses": { "200": { "description": "OK" } } } },
     "/api/payroll/{id}": { "patch": { "summary": "Adjust bonus/deductions on a payroll record and recompute net salary (Admin)", "responses": { "200": { "description": "OK" } } } },
     "/api/payroll/{id}/toggle-payment": { "patch": { "summary": "Toggle payroll payment status (Admin)", "responses": { "200": { "description": "OK" } } } },
     "/api/messages": {
@@ -56,7 +68,8 @@
     },
     "/api/message-groups/{id}/members": { "patch": { "summary": "Replace a group's membership (Admin: any; Supervisor: must be a member themselves, can only add Agents within own campaign scope)", "responses": { "200": { "description": "OK" } } } },
     "/api/message-groups/{id}": { "delete": { "summary": "Delete a message group (Admin only)", "responses": { "200": { "description": "OK" } } } },
-    "/api/kb-articles": { "get": { "summary": "List knowledge base articles", "responses": { "200": { "description": "OK" } } } },
+    "/api/kb-articles": { "post": { "summary": "Admin/Supervisor: add a document { title, content, category?, summary? }", "responses": { "201": { "description": "Created" } } }, "get": { "summary": "List knowledge base articles", "responses": { "200": { "description": "OK" } } } },
+    "/api/kb-articles/{id}": { "patch": { "summary": "Admin/Supervisor: edit a document (title, category, summary, content)", "responses": { "200": { "description": "OK" } } }, "delete": { "summary": "Admin/Supervisor: delete a document", "responses": { "200": { "description": "OK" } } } },
     "/api/tickets": {
       "get": { "summary": "List support tickets", "responses": { "200": { "description": "OK" } } },
       "post": { "summary": "Create support ticket", "responses": { "201": { "description": "Created" } } }
