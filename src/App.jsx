@@ -19,6 +19,7 @@ import ReportsAnalytics from './components/Shared/ReportsAnalytics';
 import KnowledgeBase from './components/Shared/KnowledgeBase';
 import DncCheck from './components/Shared/DncCheck';
 import DncManagement from './components/Shared/DncManagement';
+import AccessControl from './components/AdminPortal/AccessControl';
 import SupportTickets from './components/Shared/SupportTickets';
 import TeamManagement from './components/Shared/TeamManagement';
 import MessageGroupManagement from './components/Shared/MessageGroupManagement';
@@ -44,7 +45,7 @@ import { fetchLeads, addLead, updateLeadStatus } from './api/leads';
 import { fetchPayroll, togglePaymentStatus, generatePayroll, updatePayrollAdjustments } from './api/payroll';
 import { fetchMessages, sendMessage } from './api/messages';
 import { fetchMessageGroups, createMessageGroup, updateMessageGroupMembers, deleteMessageGroup } from './api/messageGroups';
-import { fetchKbArticles } from './api/kb';
+import { fetchKbArticles, createKbArticle, updateKbArticle, deleteKbArticle } from './api/kb';
 import { fetchTickets, addTicket, resolveTicket } from './api/tickets';
 
 export default function App() {
@@ -527,6 +528,22 @@ export default function App() {
     setAllUsers(await fetchUsers());
   };
 
+  // Knowledge base documents (Admin / Supervisor)
+  const handleCreateKbArticle = async (payload) => {
+    await createKbArticle(payload);
+    setKbArticles(await fetchKbArticles());
+  };
+
+  const handleUpdateKbArticle = async (id, payload) => {
+    await updateKbArticle(id, payload);
+    setKbArticles(await fetchKbArticles());
+  };
+
+  const handleDeleteKbArticle = async (id) => {
+    await deleteKbArticle(id);
+    setKbArticles(await fetchKbArticles());
+  };
+
   // Individual monthly sales-count target for an agent (Admin: any agent, Supervisor: their own agents).
   const handleUpdateSalesTarget = async (agentId, monthlySalesTarget) => {
     await updateTarget(agentId, { monthlySalesTarget });
@@ -782,6 +799,10 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'access-control' && currentUser.role === 'Admin' && (
+            <AccessControl />
+          )}
+
           {activeTab === 'dnc-check' && currentUser.role === 'Agent' && (
             <DncCheck projects={projects} />
           )}
@@ -851,7 +872,13 @@ export default function App() {
           )}
 
           {activeTab === 'knowledge' && (
-            <KnowledgeBase articles={kbArticles} />
+            <KnowledgeBase
+              articles={kbArticles}
+              canManage={currentUser.role === 'Admin' || currentUser.role === 'Supervisor'}
+              onCreateArticle={handleCreateKbArticle}
+              onUpdateArticle={handleUpdateKbArticle}
+              onDeleteArticle={handleDeleteKbArticle}
+            />
           )}
 
           {activeTab === 'tickets' && (

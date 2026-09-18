@@ -17,7 +17,8 @@ import {
   ChevronLeft,
   ChevronRight,
   MessageSquare,
-  PhoneOff
+  PhoneOff,
+  ShieldCheck
 } from 'lucide-react';
 
 const LOGO_SRC = '/blylinks-logo.png';
@@ -61,7 +62,8 @@ function getNavSections(role, pendingQaCount) {
         { id: 'payroll', label: 'Payroll', icon: FileSpreadsheet },
         { id: 'targets', label: 'Targets', icon: Target },
         { id: 'projects', label: 'Campaigns', icon: Briefcase },
-        { id: 'reports', label: 'Reports', icon: FileText }
+        { id: 'reports', label: 'Reports', icon: FileText },
+        { id: 'access-control', label: 'IP Access', icon: ShieldCheck }
       ]
     });
   }

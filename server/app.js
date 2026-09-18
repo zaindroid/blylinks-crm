@@ -24,6 +24,8 @@ const kbRoutes = require('./routes/kb.routes');
 const ticketsRoutes = require('./routes/tickets.routes');
 const adminRoutes = require('./routes/admin.routes');
 const dncRoutes = require('./routes/dnc.routes');
+const accessRoutes = require('./routes/access.routes');
+const { ipAccessGate } = require('./utils/ipAccess');
 
 function buildApp() {
   const app = express();
@@ -49,6 +51,11 @@ function buildApp() {
   app.use(healthRoutes);
   app.get('/openapi.json', (req, res) => res.json(openapiSpec));
 
+  // From here on -- the login page, the whole API and the static site -- a request must come from an
+  // allowed network when the Admin has switched the IP restriction on (it is off until then). The health
+  // endpoints above are deliberately exempt so the hosting platform's own probes always get through.
+  app.use(ipAccessGate);
+
   app.use('/api/auth', authLimiter, authRoutes);
 
   app.use('/api/users', requireAuth, blockIfMustChangePassword, apiLimiter, usersRoutes);
@@ -63,6 +70,7 @@ function buildApp() {
   app.use('/api/message-groups', requireAuth, blockIfMustChangePassword, apiLimiter, messageGroupsRoutes);
   app.use('/api/kb-articles', requireAuth, blockIfMustChangePassword, apiLimiter, kbRoutes);
   app.use('/api/tickets', requireAuth, blockIfMustChangePassword, apiLimiter, ticketsRoutes);
+  app.use('/api/access', requireAuth, blockIfMustChangePassword, apiLimiter, accessRoutes);
   app.use('/api/dnc', requireAuth, blockIfMustChangePassword, apiLimiter, dncRoutes);
   app.use('/api/admin', requireAuth, blockIfMustChangePassword, apiLimiter, adminRoutes);
 
