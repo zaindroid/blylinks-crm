@@ -63,11 +63,10 @@ router.post('/', asyncHandler(async (req, res) => {
   try {
     await client.query('BEGIN');
     await client.query(
-      `INSERT INTO users (id, name, username, password_hash, role, designation, status, avatar, base_salary_pkr)
-       VALUES ($1,$2,$3,$4,$5,$6,'Active',$7,$8)`,
+      `INSERT INTO users (id, name, username, password_hash, role, designation, status, base_salary_pkr)
+       VALUES ($1,$2,$3,$4,$5,$6,'Active',$7)`,
       [
         id, name, username, passwordHash, role, DESIGNATIONS[role],
-        'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80',
         req.user.role === 'Admin' && baseSalaryPkr ? Number(baseSalaryPkr) : 0
       ]
     );
@@ -110,6 +109,29 @@ router.patch('/:id/campaigns', requireRole('Admin'), asyncHandler(async (req, re
   }
 
   res.json(await toPublicUser(target));
+}));
+
+// An Admin can change any other registered user's role at any time. requireAuth reads the
+// role fresh from the database on every request, so the change applies to that user's very
+// next call -- their existing session isn't left holding the old privileges until it expires.
+// Changing your own role is refused: the acting Admin is what guarantees there is always at
+// least one Admin, so this also rules out locking the whole team out by demoting yourself.
+router.patch('/:id/role', requireRole('Admin'), asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { role } = req.body;
+  if (!Object.prototype.hasOwnProperty.call(DESIGNATIONS, role)) {
+    return res.status(400).json({ error: 'role must be one of: Admin, Supervisor, Agent' });
+  }
+  if (id === req.user.id) {
+    return res.status(400).json({ error: 'You cannot change your own role' });
+  }
+
+  const target = await findUserRowById(id);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+
+  await pool.query('UPDATE users SET role = $2, designation = $3 WHERE id = $1', [id, role, DESIGNATIONS[role]]);
+  const updated = await findUserRowById(id);
+  res.json(await toPublicUser(updated));
 }));
 
 router.patch('/:id/base-salary', requireRole('Admin'), asyncHandler(async (req, res) => {

@@ -577,6 +577,12 @@ button, input, select, textarea {
 .notification-item { display: flex; align-items: flex-start; gap: 0.65rem; padding: 0.7rem 0.9rem; border-bottom: 1px solid var(--border-color); }
 .notification-item:last-child { border-bottom: none; }
 .notification-item.unread { background: var(--accent-light); }
+/* Initials stand-in for a profile photo. Accounts have no photo unless one is set, and we
+   deliberately don't fill the gap with a stock image of someone who isn't them. Size and
+   radius come from the class it is combined with (.user-avatar, .roster-avatar-mini, ...). */
+.avatar-fallback { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; background: var(--accent); color: #fff; font-weight: 700; font-size: 0.72rem; text-transform: uppercase; user-select: none; }
+.notification-item.clickable { cursor: pointer; }
+.notification-item.clickable:hover { background: var(--bg-primary); }
 .notif-icon { margin-top: 2px; flex-shrink: 0; }
 .notif-content { flex: 1; min-width: 0; }
 .notif-title { font-size: 0.8rem; font-weight: 650; color: var(--text-main); }

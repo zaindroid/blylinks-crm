@@ -20,6 +20,15 @@ describe('user creation RBAC', () => {
     expect(res.body.allowedCampaignIds).toEqual([campaignA]);
   });
 
+  it('new accounts get no placeholder profile image (the UI shows initials instead)', async () => {
+    const res = await request(app)
+      .post('/api/users')
+      .set('Authorization', `Bearer ${admin.token}`)
+      .send({ name: 'No Photo', username: uid('nophoto'), password: 'pass12345', role: 'Agent', campaignIds: [campaignA] });
+    expect(res.status).toBe(201);
+    expect(res.body.avatar).toBeNull();
+  });
+
   it('a duplicate username is rejected with 409', async () => {
     const username = uid('dupe');
     await request(app).post('/api/users').set('Authorization', `Bearer ${admin.token}`)

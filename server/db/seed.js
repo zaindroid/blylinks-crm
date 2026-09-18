@@ -14,17 +14,17 @@ async function seed() {
     await client.query('BEGIN');
 
     const users = [
-      { id: 'usr_admin', name: 'Zain', username: 'admin', password: 'admin', role: 'Admin', designation: 'VP of Operations', phone: '+92 300 1234567', cnic: '42101-1234567-1', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80', shift: '09:00 AM - 05:00 PM' },
-      { id: 'usr_supervisor', name: 'Emma Watson', username: 'supervisor', password: 'supervisor', role: 'Supervisor', designation: 'Team Operations Supervisor', phone: '+92 301 2345678', cnic: '42101-2345678-2', avatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=150&q=80', shift: '08:30 AM - 04:30 PM' },
-      { id: 'usr_agent_1', name: 'Sarah Jenkins', username: 'sarah', password: 'agent', role: 'Agent', designation: 'Outbound Sales Specialist', phone: '+92 302 3456789', cnic: '42101-3456789-3', avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=150&q=80', shift: '08:00 AM - 04:00 PM' }
+      { id: 'usr_admin', name: 'Zain', username: 'admin', password: 'admin', role: 'Admin', designation: 'VP of Operations', phone: '+92 300 1234567', cnic: '42101-1234567-1', shift: '09:00 AM - 05:00 PM' },
+      { id: 'usr_supervisor', name: 'Emma Watson', username: 'supervisor', password: 'supervisor', role: 'Supervisor', designation: 'Team Operations Supervisor', phone: '+92 301 2345678', cnic: '42101-2345678-2', shift: '08:30 AM - 04:30 PM' },
+      { id: 'usr_agent_1', name: 'Sarah Jenkins', username: 'sarah', password: 'agent', role: 'Agent', designation: 'Outbound Sales Specialist', phone: '+92 302 3456789', cnic: '42101-3456789-3', shift: '08:00 AM - 04:00 PM' }
     ];
 
     for (const u of users) {
       const passwordHash = await bcrypt.hash(u.password, 10);
       await client.query(
-        `INSERT INTO users (id, name, username, password_hash, role, designation, phone, cnic, status, avatar, shift)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Active',$9,$10)`,
-        [u.id, u.name, u.username, passwordHash, u.role, u.designation, u.phone, u.cnic, u.avatar, u.shift]
+        `INSERT INTO users (id, name, username, password_hash, role, designation, phone, cnic, status, shift)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'Active',$9)`,
+        [u.id, u.name, u.username, passwordHash, u.role, u.designation, u.phone, u.cnic, u.shift]
       );
     }
 

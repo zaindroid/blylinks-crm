@@ -29,7 +29,7 @@ describe('SaleSubmissionModal', () => {
     expect(container).toBeEmptyDOMElement();
   });
 
-  it('cannot submit while Name/Phone 1/Amount are missing (required fields block it)', async () => {
+  it('cannot submit while Name/Phone 1 are missing (required fields block it)', async () => {
     const onSubmitSale = vi.fn();
     const user = userEvent.setup();
     renderModal({ onSubmitSale });
@@ -39,7 +39,7 @@ describe('SaleSubmissionModal', () => {
     expect(onSubmitSale).not.toHaveBeenCalled();
   });
 
-  it('submits with the required fields filled and forwards the full field set, amount coerced to a number', async () => {
+  it('submits with the required fields filled and forwards the full field set (no amount -- agents do not enter one)', async () => {
     const onSubmitSale = vi.fn();
     const onClose = vi.fn();
     const user = userEvent.setup();
@@ -47,16 +47,20 @@ describe('SaleSubmissionModal', () => {
 
     await user.type(screen.getByPlaceholderText(/johnathan sterling/i), 'Jane Doe');
     await user.type(screen.getByPlaceholderText(/\+1 \(555\) 000-0000/i), '5551234567');
-    await user.type(screen.getByPlaceholderText(/e\.g\. 2500/i), '2500');
     await user.click(screen.getByRole('button', { name: /submit order/i }));
 
     expect(onSubmitSale).toHaveBeenCalledTimes(1);
     const submitted = onSubmitSale.mock.calls[0][0];
     expect(submitted.customerName).toBe('Jane Doe');
     expect(submitted.phone).toBe('5551234567');
-    expect(submitted.amount).toBe(2500);
-    expect(typeof submitted.amount).toBe('number');
+    expect(submitted).not.toHaveProperty('amount');
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('has no Sale Amount field -- agents do not enter one', () => {
+    renderModal();
+    expect(screen.queryByText(/sale amount/i)).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/e\.g\. 2500/i)).not.toBeInTheDocument();
   });
 
   it('shows Agent Name and Status as read-only, not user-editable fields', () => {
@@ -80,7 +84,6 @@ describe('SaleSubmissionModal', () => {
     const nameInput = screen.getByPlaceholderText(/johnathan sterling/i);
     await user.type(nameInput, 'Jane Doe');
     await user.type(screen.getByPlaceholderText(/\+1 \(555\) 000-0000/i), '5551234567');
-    await user.type(screen.getByPlaceholderText(/e\.g\. 2500/i), '2500');
     await user.click(screen.getByRole('button', { name: /submit order/i }));
 
     expect(nameInput.value).toBe('');

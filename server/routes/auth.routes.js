@@ -68,12 +68,9 @@ router.post('/register', asyncHandler(async (req, res) => {
   const id = genId('usr_admin');
   const passwordHash = await bcrypt.hash(password, 10);
   await pool.query(
-    `INSERT INTO users (id, name, username, password_hash, role, designation, status, avatar)
-     VALUES ($1,$2,$3,$4,'Admin','Administrator','Active',$5)`,
-    [
-      id, name, username, passwordHash,
-      'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'
-    ]
+    `INSERT INTO users (id, name, username, password_hash, role, designation, status)
+     VALUES ($1,$2,$3,$4,'Admin','Administrator','Active')`,
+    [id, name, username, passwordHash]
   );
   await joinDefaultGroups(pool, id);
 

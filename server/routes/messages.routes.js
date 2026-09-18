@@ -19,7 +19,10 @@ function reshape(row) {
     senderName: row.sender_name,
     senderRole: row.sender_role,
     text: row.text,
-    timestamp: row.created_at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    timestamp: row.created_at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    // Machine-readable and timezone-unambiguous -- the client uses it to work out
+    // which messages are newer than what the user last read in each conversation.
+    createdAt: row.created_at.toISOString()
   };
 }
 

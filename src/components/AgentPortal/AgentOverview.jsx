@@ -10,6 +10,7 @@ import {
   BookOpen
 } from 'lucide-react';
 import { formatPKR } from '../../utils/currency';
+import { countMySales } from '../../utils/celebration';
 import SalesLeaderboard from '../Shared/SalesLeaderboard';
 import DashboardMessenger from '../Shared/DashboardMessenger';
 
@@ -42,23 +43,14 @@ export default function AgentOverview({
   const approvedRevenuePkr = approvedSales.reduce((acc, curr) => acc + Number(curr.amount), 0);
   const pendingRevenuePkr = pendingSales.reduce((acc, curr) => acc + Number(curr.amount), 0);
 
-  const now = new Date();
-  const approvedThisMonthPkr = approvedSales
-    .filter(s => {
-      if (!s.saleDateIso) return false;
-      const d = new Date(s.saleDateIso);
-      return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth();
-    })
-    .reduce((acc, curr) => acc + Number(curr.amount), 0);
-
-  const myTarget = targets.find(t => t.agentId === currentUser.id) || {
-    dailyTargetPkr: 50000,
-    monthlyTargetPkr: 1200000
-  };
-
-  const monthlyPct = myTarget.monthlyTargetPkr > 0
-    ? Math.min(Math.round((approvedThisMonthPkr / myTarget.monthlyTargetPkr) * 100), 100)
+  // The monthly target is a number of sales, set for this agent by their Admin/Supervisor. Progress counts
+  // everything they logged this month across all campaigns (Pakistan time), excluding rejected sales.
+  const monthlySalesTarget = targets.find(t => t.agentId === currentUser.id)?.monthlySalesTarget || 0;
+  const mySalesThisMonth = countMySales(sales, currentUser.id).month;
+  const monthlyPct = monthlySalesTarget > 0
+    ? Math.min(Math.round((mySalesThisMonth / monthlySalesTarget) * 100), 100)
     : 0;
+  const salesLeft = Math.max(monthlySalesTarget - mySalesThisMonth, 0);
 
   const pendingCallbacks = callbacks.filter(c => c.agentId === currentUser.id && c.campaignId === selectedCampaignId && c.status !== 'Completed');
 
@@ -98,12 +90,21 @@ export default function AgentOverview({
         </div>
 
         <div className="kpi-card">
-          <div className="kpi-head"><span>Monthly Target</span></div>
-          <div className="kpi-value">{monthlyPct}%</div>
+          <div className="kpi-head"><span>Monthly Sales Target</span></div>
+          <div className="kpi-value">{monthlySalesTarget > 0 ? `${monthlyPct}%` : '—'}</div>
           <div className="progress-bar-container">
             <div className="progress-bar-fill" style={{ width: `${monthlyPct}%` }}></div>
           </div>
-          <div className="kpi-sub"><span>{formatPKR(approvedThisMonthPkr)} / {formatPKR(myTarget.monthlyTargetPkr)}</span></div>
+          <div className="kpi-sub">
+            {monthlySalesTarget > 0 ? (
+              <span>
+                {mySalesThisMonth} / {monthlySalesTarget} sales
+                {salesLeft > 0 ? ` · ${salesLeft} to go` : ' · target reached 🎉'}
+              </span>
+            ) : (
+              <span>{mySalesThisMonth} sales this month · no target set yet</span>
+            )}
+          </div>
         </div>
 
         <div className="kpi-card">

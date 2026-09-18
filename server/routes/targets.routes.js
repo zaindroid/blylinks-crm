@@ -2,6 +2,7 @@ const express = require('express');
 const pool = require('../db/pool');
 const asyncHandler = require('../utils/asyncHandler');
 const { requireRole } = require('../middleware/auth');
+const { findUserRowById, shareCampaignAccess } = require('../db/usersRepo');
 
 const router = express.Router();
 
@@ -20,7 +21,8 @@ function reshape(row) {
     weeklyTargetPkr: Number(row.weekly_target_pkr),
     weeklyAchievedPkr: Number(row.weekly_achieved_pkr),
     monthlyTargetPkr: Number(row.monthly_target_pkr),
-    monthlyAchievedPkr: Number(row.monthly_achieved_pkr)
+    monthlyAchievedPkr: Number(row.monthly_achieved_pkr),
+    monthlySalesTarget: Number(row.monthly_sales_target)
   };
 }
 
@@ -37,21 +39,46 @@ router.get('/', asyncHandler(async (req, res) => {
   res.json(rows.map(reshape));
 }));
 
-router.patch('/:agentId', requireRole('Admin'), asyncHandler(async (req, res) => {
+const PKR_FIELDS = ['dailyTargetPkr', 'dailyAchievedPkr', 'weeklyTargetPkr', 'weeklyAchievedPkr', 'monthlyTargetPkr', 'monthlyAchievedPkr'];
+
+// Admins can set every target figure for any agent. A Supervisor may set an individual sales-count
+// target, but only for an Agent who shares a campaign with them -- the same scoping used for Team
+// Management -- and never the PKR figures, which stay Admin-only.
+router.patch('/:agentId', requireRole('Admin', 'Supervisor'), asyncHandler(async (req, res) => {
   const { agentId } = req.params;
-  const { dailyTargetPkr, dailyAchievedPkr, weeklyTargetPkr, weeklyAchievedPkr, monthlyTargetPkr, monthlyAchievedPkr } = req.body;
+  const { dailyTargetPkr, dailyAchievedPkr, weeklyTargetPkr, weeklyAchievedPkr, monthlyTargetPkr, monthlyAchievedPkr, monthlySalesTarget } = req.body;
+
+  if (req.user.role === 'Supervisor' && PKR_FIELDS.some(f => req.body[f] !== undefined)) {
+    return res.status(403).json({ error: 'Supervisors can only set the monthly sales target' });
+  }
+
+  let salesTarget = null;
+  if (monthlySalesTarget !== undefined && monthlySalesTarget !== null && monthlySalesTarget !== '') {
+    salesTarget = Number(monthlySalesTarget);
+    if (!Number.isInteger(salesTarget) || salesTarget < 0) {
+      return res.status(400).json({ error: 'monthlySalesTarget must be a whole number of sales (0 or more)' });
+    }
+  }
+
+  const target = await findUserRowById(agentId);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  if (target.role !== 'Agent') return res.status(400).json({ error: 'Targets can only be set for Agents' });
+  if (req.user.role === 'Supervisor' && !(await shareCampaignAccess(req.user.id, agentId))) {
+    return res.status(403).json({ error: 'This agent is outside your campaign access' });
+  }
 
   await pool.query(
-    `INSERT INTO targets (agent_id, daily_target_pkr, daily_achieved_pkr, weekly_target_pkr, weekly_achieved_pkr, monthly_target_pkr, monthly_achieved_pkr)
-     VALUES ($1, COALESCE($2,0), COALESCE($3,0), COALESCE($4,0), COALESCE($5,0), COALESCE($6,0), COALESCE($7,0))
+    `INSERT INTO targets (agent_id, daily_target_pkr, daily_achieved_pkr, weekly_target_pkr, weekly_achieved_pkr, monthly_target_pkr, monthly_achieved_pkr, monthly_sales_target)
+     VALUES ($1, COALESCE($2,0), COALESCE($3,0), COALESCE($4,0), COALESCE($5,0), COALESCE($6,0), COALESCE($7,0), COALESCE($8,0))
      ON CONFLICT (agent_id) DO UPDATE SET
        daily_target_pkr = COALESCE($2, targets.daily_target_pkr),
        daily_achieved_pkr = COALESCE($3, targets.daily_achieved_pkr),
        weekly_target_pkr = COALESCE($4, targets.weekly_target_pkr),
        weekly_achieved_pkr = COALESCE($5, targets.weekly_achieved_pkr),
        monthly_target_pkr = COALESCE($6, targets.monthly_target_pkr),
-       monthly_achieved_pkr = COALESCE($7, targets.monthly_achieved_pkr)`,
-    [agentId, dailyTargetPkr, dailyAchievedPkr, weeklyTargetPkr, weeklyAchievedPkr, monthlyTargetPkr, monthlyAchievedPkr]
+       monthly_achieved_pkr = COALESCE($7, targets.monthly_achieved_pkr),
+       monthly_sales_target = COALESCE($8, targets.monthly_sales_target)`,
+    [agentId, dailyTargetPkr, dailyAchievedPkr, weeklyTargetPkr, weeklyAchievedPkr, monthlyTargetPkr, monthlyAchievedPkr, salesTarget]
   );
 
   const { rows } = await pool.query(`${SELECT_TARGETS} WHERE t.agent_id = $1`, [agentId]);

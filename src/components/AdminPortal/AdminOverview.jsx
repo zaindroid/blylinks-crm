@@ -40,7 +40,6 @@ export default function AdminOverview({
   const approvedSales = campaignSales.filter(s => s.status === 'Approved');
   const pendingSales = campaignSales.filter(s => s.status === 'Pending');
 
-  const totalRevenuePkr = approvedSales.reduce((sum, s) => sum + Number(s.amount), 0);
   const totalSubmissions = campaignSales.length;
   const approvalRate = totalSubmissions > 0 ? Math.round((approvedSales.length / totalSubmissions) * 100) : 0;
 
@@ -67,7 +66,7 @@ export default function AdminOverview({
         </div>
         <div className="page-header-actions">
           <button className="btn btn-primary" onClick={() => setActiveTab('qa-approval')}>
-            <CheckCircle size={15} /> Administrative Review Queue ({pendingSales.length})
+            <CheckCircle size={15} /> QA Review Queue ({pendingSales.length})
           </button>
           <button className="btn btn-secondary" onClick={() => setActiveTab('team-attendance')}>
             <Clock size={15} /> Shift Roster
@@ -78,12 +77,12 @@ export default function AdminOverview({
         </div>
       </div>
 
-      {/* 4 Visual KPI Cards (PKR Currency) */}
+      {/* 4 Visual KPI Cards */}
       <div className="kpi-grid">
         <div className="kpi-card">
-          <div className="kpi-head"><span>Campaign Sales Revenue</span></div>
-          <div className="kpi-value">{formatPKR(totalRevenuePkr)}</div>
-          <div className="kpi-sub"><span className="text-success">{approvedSales.length} Approved Deals</span></div>
+          <div className="kpi-head"><span>Campaign Sales</span></div>
+          <div className="kpi-value">{approvedSales.length}</div>
+          <div className="kpi-sub"><span className="text-success">Approved Deals</span></div>
         </div>
 
         <div className="kpi-card">
@@ -105,12 +104,12 @@ export default function AdminOverview({
         </div>
       </div>
 
-      {/* 2 Clean Cards: Administrative Review Queue & Active Campaign Details */}
+      {/* 2 Clean Cards: QA Review Queue & Active Campaign Details */}
       <div className="grid-2">
-        {/* Urgent Pending Administrative Review Queue */}
+        {/* Urgent Pending QA Review Queue */}
         <div className="card">
           <div className="card-header">
-            <span className="card-title">Urgent Administrative Review Queue ({pendingSales.length})</span>
+            <span className="card-title">Urgent QA Review Queue ({pendingSales.length})</span>
             <button className="text-btn" onClick={() => setActiveTab('qa-approval')}>View All</button>
           </div>
 
@@ -127,8 +126,8 @@ export default function AdminOverview({
                     <div className="item-desc">{s.projectName} &bull; <span className="font-mono text-accent">{formatPKR(s.amount)}</span></div>
                   </div>
                   <div className="btn-group-sm">
-                    <button className="btn btn-success btn-sm" onClick={() => onApproveSale(s.id, 'Approved by Administrative Review')}>Approve</button>
-                    <button className="btn btn-danger btn-sm" onClick={() => onRejectSale(s.id, 'Disqualified by Administrative Review')}>Reject</button>
+                    <button className="btn btn-success btn-sm" onClick={() => onApproveSale(s.id, 'Approved by QA Review')}>Approve</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => onRejectSale(s.id, 'Disqualified by QA Review')}>Reject</button>
                   </div>
                 </div>
               ))}
@@ -144,12 +143,12 @@ export default function AdminOverview({
           </div>
           <div className="minimal-list">
             {projects.map(p => {
-              const pct = Math.min(Math.round((p.totalRevenuePkr / p.monthlyTargetPkr) * 100), 100);
+              const pct = p.monthlySalesGoal > 0 ? Math.min(Math.round((p.monthSalesCount / p.monthlySalesGoal) * 100), 100) : 0;
               return (
                 <div key={p.id} className="minimal-list-item">
                   <div>
                     <div className="item-title">{p.name}</div>
-                    <div className="item-desc">{formatPKR(p.totalRevenuePkr)} / {formatPKR(p.monthlyTargetPkr)}</div>
+                    <div className="item-desc">{p.monthSalesCount} / {p.monthlySalesGoal} sales this month</div>
                   </div>
                   <span className={`badge ${pct >= 80 ? 'badge-success' : 'badge-warning'}`}>{pct}%</span>
                 </div>

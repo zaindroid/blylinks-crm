@@ -25,7 +25,7 @@ const FULL_ORDER = {
 };
 
 describe('sale submission', () => {
-  it('required fields are enforced: campaignId, customerName, phone, amount', async () => {
+  it('required fields are enforced: campaignId, customerName, phone', async () => {
     const admin = await createAdmin();
     const campaignId = await createCampaign(admin.token);
     const agent = await createAgentViaApi(admin.token, [campaignId]);
@@ -33,6 +33,29 @@ describe('sale submission', () => {
     const res = await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
       .send({ campaignId, customerName: 'No Phone Or Amount' });
     expect(res.status).toBe(400);
+  });
+
+  it('amount is optional (agents no longer enter one) and defaults to 0', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+
+    const res = await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'No Amount', phone: '5551234567' });
+    expect(res.status).toBe(201);
+    expect(res.body.amount).toBe(0);
+  });
+
+  it('a supplied amount must still be a non-negative number', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+
+    for (const bad of [-5, 'abc', {}]) {
+      const res = await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+        .send({ campaignId, customerName: 'Bad Amount', phone: '5551234567', amount: bad });
+      expect(res.status).toBe(400);
+    }
   });
 
   it('every order-detail field submitted round-trips exactly through GET', async () => {

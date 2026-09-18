@@ -5,6 +5,7 @@ import { playBlylinksTone } from '../utils/sound';
 export default function TaskNotificationDrawer({
   latestNotification,
   onDismissNotification,
+  onOpenNotification,
   callbacks,
   attendanceStatus,
   onClockAction,
@@ -24,19 +25,42 @@ export default function TaskNotificationDrawer({
 
   const pendingCallbacks = callbacks.filter(c => c.status !== 'Completed');
 
+  // A message notification carries the conversation it came from; clicking it opens that chat.
+  const isOpenable = !!(latestNotification?.channel && onOpenNotification);
+  const openToast = () => {
+    setShowToast(false);
+    onOpenNotification(latestNotification);
+  };
+
   return (
     <>
       {/* Floating Corner Notification Toast (Bottom Right) */}
       {showToast && latestNotification && (
-        <div className="corner-toast-notification">
+        <div
+          className={`corner-toast-notification ${isOpenable ? 'clickable' : ''}`}
+          {...(isOpenable ? {
+            role: 'button',
+            tabIndex: 0,
+            'aria-label': `${latestNotification.title}. Open conversation`,
+            onClick: openToast,
+            onKeyDown: (e) => {
+              if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openToast(); }
+            }
+          } : {})}
+        >
           <div className="toast-icon-box">
-            <Bell size={18} />
+            {latestNotification.type === 'message' ? <MessageSquare size={18} /> : <Bell size={18} />}
           </div>
           <div className="toast-content">
             <div className="toast-title">{latestNotification.title}</div>
             <div className="toast-message">{latestNotification.message}</div>
+            {isOpenable && <div className="toast-cta">Click to open conversation</div>}
           </div>
-          <button className="icon-btn-sm" onClick={() => setShowToast(false)} aria-label="Dismiss notification">
+          <button
+            className="icon-btn-sm"
+            onClick={(e) => { e.stopPropagation(); setShowToast(false); }}
+            aria-label="Dismiss notification"
+          >
             <X size={14} />
           </button>
         </div>
@@ -107,6 +131,9 @@ export default function TaskNotificationDrawer({
       </div>
 
       <style>{`
+        .corner-toast-notification.clickable { cursor: pointer; }
+        .corner-toast-notification.clickable:hover { border-color: var(--accent); }
+        .toast-cta { font-size: 0.68rem; font-weight: 700; color: var(--accent); margin-top: 0.25rem; }
         .corner-toast-notification {
           position: fixed;
           bottom: 24px;

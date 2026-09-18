@@ -11,7 +11,8 @@ async function listCampaigns() {
     SELECT
       c.*,
       COALESCE(s.total_sales_count, 0) AS total_sales_count,
-      COALESCE(s.total_revenue_pkr, 0) AS total_revenue_pkr
+      COALESCE(s.total_revenue_pkr, 0) AS total_revenue_pkr,
+      COALESCE(m.month_sales_count, 0) AS month_sales_count
     FROM campaigns c
     LEFT JOIN (
       SELECT campaign_id, COUNT(*) AS total_sales_count, SUM(amount) AS total_revenue_pkr
@@ -19,6 +20,15 @@ async function listCampaigns() {
       WHERE status = 'Approved'
       GROUP BY campaign_id
     ) s ON s.campaign_id = c.id
+    LEFT JOIN (
+      -- Sales logged this calendar month (Pakistan time), excluding rejected ones: this is what a
+      -- "monthly sales goal" is measured against. totalSalesCount above is all-time and Approved-only.
+      SELECT campaign_id, COUNT(*) AS month_sales_count
+      FROM sales
+      WHERE status <> 'Rejected'
+        AND date_trunc('month', sale_date AT TIME ZONE 'Asia/Karachi') = date_trunc('month', now() AT TIME ZONE 'Asia/Karachi')
+      GROUP BY campaign_id
+    ) m ON m.campaign_id = c.id
     ORDER BY c.created_at ASC
   `);
   const { rows: links } = await pool.query('SELECT campaign_id, user_id FROM campaign_access');
@@ -32,13 +42,23 @@ async function listCampaigns() {
     name: row.name,
     client: row.client,
     category: row.category,
+    monthlySalesGoal: Number(row.monthly_sales_goal),
     monthlyTargetPkr: Number(row.monthly_target_pkr),
     commissionRate: Number(row.commission_rate),
     status: row.status,
     assignedAgentIds: byCampaign[row.id] || [],
     totalSalesCount: Number(row.total_sales_count),
+    monthSalesCount: Number(row.month_sales_count),
     totalRevenuePkr: Number(row.total_revenue_pkr)
   }));
+}
+
+// undefined/null/'' means "not provided"; anything else must be a whole number >= 0.
+function parseSalesGoal(value) {
+  if (value === undefined || value === null || value === '') return { provided: false };
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0) return { provided: true, error: 'monthlySalesGoal must be a whole number of sales (0 or more)' };
+  return { provided: true, value: n };
 }
 
 router.get('/', asyncHandler(async (req, res) => {
@@ -54,17 +74,19 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 router.post('/', requireRole('Admin'), asyncHandler(async (req, res) => {
-  const { id, name, client, category, monthlyTargetPkr, commissionRate, assignedAgentIds = [] } = req.body;
+  const { id, name, client, category, monthlyTargetPkr, commissionRate, monthlySalesGoal, assignedAgentIds = [] } = req.body;
   if (!id || !name) {
     return res.status(400).json({ error: 'id and name are required' });
   }
+  const goal = parseSalesGoal(monthlySalesGoal);
+  if (goal.error) return res.status(400).json({ error: goal.error });
   const dbClient = await pool.connect();
   try {
     await dbClient.query('BEGIN');
     await dbClient.query(
-      `INSERT INTO campaigns (id, name, client, category, monthly_target_pkr, commission_rate, status)
-       VALUES ($1,$2,$3,$4,$5,$6,'Active')`,
-      [id, name, client, category, monthlyTargetPkr || 0, commissionRate || 0]
+      `INSERT INTO campaigns (id, name, client, category, monthly_target_pkr, commission_rate, monthly_sales_goal, status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'Active')`,
+      [id, name, client, category, monthlyTargetPkr || 0, commissionRate || 0, goal.value ?? 0]
     );
     for (const userId of assignedAgentIds) {
       await dbClient.query('INSERT INTO campaign_access (campaign_id, user_id) VALUES ($1,$2)', [id, userId]);
@@ -81,7 +103,9 @@ router.post('/', requireRole('Admin'), asyncHandler(async (req, res) => {
 
 router.patch('/:id', requireRole('Admin'), asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { name, client, category, monthlyTargetPkr, commissionRate, assignedAgentIds } = req.body;
+  const { name, client, category, monthlyTargetPkr, commissionRate, monthlySalesGoal, assignedAgentIds } = req.body;
+  const goal = parseSalesGoal(monthlySalesGoal);
+  if (goal.error) return res.status(400).json({ error: goal.error });
 
   await pool.query(
     `UPDATE campaigns SET
@@ -89,9 +113,10 @@ router.patch('/:id', requireRole('Admin'), asyncHandler(async (req, res) => {
        client = COALESCE($3, client),
        category = COALESCE($4, category),
        monthly_target_pkr = COALESCE($5, monthly_target_pkr),
-       commission_rate = COALESCE($6, commission_rate)
+       commission_rate = COALESCE($6, commission_rate),
+       monthly_sales_goal = COALESCE($7, monthly_sales_goal)
      WHERE id = $1`,
-    [id, name, client, category, monthlyTargetPkr, commissionRate]
+    [id, name, client, category, monthlyTargetPkr, commissionRate, goal.value ?? null]
   );
 
   if (Array.isArray(assignedAgentIds)) {

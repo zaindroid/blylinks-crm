@@ -26,3 +26,8 @@ export function updateBaseSalary(id, baseSalaryPkr) {
 export function resetUserPassword(id) {
   return apiFetch(`/users/${id}/reset-password`, { method: 'PATCH' });
 }
+
+// Admin-only. Takes effect on that user's very next request.
+export function updateUserRole(id, role) {
+  return apiFetch(`/users/${id}/role`, { method: 'PATCH', body: { role } });
+}

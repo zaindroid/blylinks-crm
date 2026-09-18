@@ -90,8 +90,15 @@ router.get('/', asyncHandler(async (req, res) => {
 
 router.post('/', asyncHandler(async (req, res) => {
   const { campaignId, customerName, phone, email, amount, agentNotes, saleDate } = req.body;
-  if (!campaignId || !customerName || !phone || !amount) {
-    return res.status(400).json({ error: 'campaignId, customerName, phone and amount are required' });
+  if (!campaignId || !customerName || !phone) {
+    return res.status(400).json({ error: 'campaignId, customerName and phone are required' });
+  }
+  // Agents don't enter a sale amount on the order form. It stays optional (defaulting to 0,
+  // since the column is NOT NULL), but a value that IS supplied must still be a real
+  // non-negative number rather than being trusted blindly into the database.
+  const saleAmount = amount === undefined || amount === null || amount === '' ? 0 : Number(amount);
+  if (!Number.isFinite(saleAmount) || saleAmount < 0) {
+    return res.status(400).json({ error: 'amount must be a non-negative number' });
   }
   const id = `SALE-${Math.floor(1000 + Math.random() * 9000)}`;
   const detailValues = ORDER_DETAIL_FIELDS.map(([jsonKey]) => req.body[jsonKey] || null);
@@ -100,7 +107,7 @@ router.post('/', asyncHandler(async (req, res) => {
   await pool.query(
     `INSERT INTO sales (id, customer_name, phone, email, campaign_id, agent_id, amount, status, agent_notes, qa_notes, verified_by, sale_date, ${detailColumns})
      VALUES ($1,$2,$3,$4,$5,$6,$7,'Pending',$8,'','', COALESCE($${8 + ORDER_DETAIL_FIELDS.length + 1}::timestamptz, now()), ${detailPlaceholders})`,
-    [id, customerName, phone, email || 'N/A', campaignId, req.user.id, amount, agentNotes || 'No notes provided.', ...detailValues, saleDate || null]
+    [id, customerName, phone, email || 'N/A', campaignId, req.user.id, saleAmount, agentNotes || 'No notes provided.', ...detailValues, saleDate || null]
   );
   const { rows } = await pool.query(`${SELECT_SALE} WHERE s.id = $1`, [id]);
   res.status(201).json(reshapeSale(rows[0]));

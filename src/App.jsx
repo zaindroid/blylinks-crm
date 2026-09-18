@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import LoadingScreen from './components/LoadingScreen';
 import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
@@ -22,15 +22,17 @@ import TeamManagement from './components/Shared/TeamManagement';
 import MessageGroupManagement from './components/Shared/MessageGroupManagement';
 import TaskNotificationDrawer from './components/TaskNotificationDrawer';
 import ChatDrawer from './components/Chat/ChatDrawer';
+import { ChatContext } from './components/Chat/ChatContext';
+import { useUnreadTracker } from './hooks/useUnreadTracker';
 import AuthModal from './components/Auth/AuthModal';
 import ChangePasswordModal from './components/Auth/ChangePasswordModal';
 import SaleCelebration from './components/Shared/SaleCelebration';
 import { requestNotificationPermission, showDesktopNotification } from './utils/notifications';
-import { randomMotivationalQuote } from './utils/motivationalQuotes';
+import { buildCelebration, countMySales } from './utils/celebration';
 
 import { getToken, setToken, decodeToken } from './api/client';
 import { logout as apiLogout } from './api/auth';
-import { fetchUsers, createUser, deactivateUser, updateUserCampaigns, updateBaseSalary, resetUserPassword } from './api/users';
+import { fetchUsers, createUser, deactivateUser, updateUserCampaigns, updateBaseSalary, resetUserPassword, updateUserRole } from './api/users';
 import { fetchCampaigns, createCampaign, updateCampaign, toggleCampaignStatus } from './api/campaigns';
 import { fetchSales, submitSale, approveSale, rejectSale } from './api/sales';
 import { fetchAttendance, clockIn, clockOut, updateAttendanceStatus } from './api/attendance';
@@ -80,15 +82,37 @@ export default function App() {
   const [isSaleModalOpen, setIsSaleModalOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [latestNotification, setLatestNotification] = useState(null);
-  const [celebrationQuote, setCelebrationQuote] = useState(null);
+  const [celebration, setCelebration] = useState(null);
 
   // Chat drawer state: 'closed' | 'open' | 'minimized'
   const [chatPanelState, setChatPanelState] = useState('closed');
-  const [chatUnreadCount, setChatUnreadCount] = useState(0);
   const chatPanelStateRef = useRef(chatPanelState);
   useEffect(() => { chatPanelStateRef.current = chatPanelState; }, [chatPanelState]);
   const seenMessageIds = useRef(new Set());
   const messagesInitialized = useRef(false);
+
+  // The background poll is a long-lived closure; it reads the *current* user through
+  // this ref so a role change made by an Admin is picked up without re-creating it.
+  const currentUserRef = useRef(currentUser);
+  currentUserRef.current = currentUser;
+  const openChatToRef = useRef(() => {});
+
+  // Shared chat state: which conversations have unread messages, which conversation
+  // is on screen right now, and a "please open this conversation" request that a
+  // notification click can raise for whichever chat window is available.
+  const [messagesLoaded, setMessagesLoaded] = useState(false);
+  const { unreadByChannel, totalUnread, markRead } = useUnreadTracker(currentUser?.id, messages, messagesLoaded);
+  const [chatFocus, setChatFocus] = useState(null);
+  const viewingRef = useRef({});
+  const reportViewing = useCallback((source, channel) => { viewingRef.current[source] = channel; }, []);
+  const consumeFocus = useCallback((nonce) => setChatFocus(f => (f && f.nonce === nonce ? null : f)), []);
+  const chatGroups = useMemo(
+    () => messageGroups.filter(g => (g.memberIds || []).includes(currentUser?.id)),
+    [messageGroups, currentUser?.id]
+  );
+  const chatContextValue = useMemo(() => ({
+    messages, groups: chatGroups, unreadByChannel, totalUnread, markRead, reportViewing, focusRequest: chatFocus, consumeFocus
+  }), [messages, chatGroups, unreadByChannel, totalUnread, markRead, reportViewing, chatFocus, consumeFocus]);
 
   // Ask for desktop notification permission once, up front
   useEffect(() => {
@@ -163,6 +187,9 @@ export default function App() {
         setLeads(leadsData);
         setPayroll(payrollData);
         setMessages(messagesData);
+        messagesData.forEach(m => seenMessageIds.current.add(m.id));
+        messagesInitialized.current = true;
+        setMessagesLoaded(true);
         setMessageGroups(groupsData);
         setKbArticles(kbData);
         setTickets(ticketsData);
@@ -179,19 +206,32 @@ export default function App() {
   useEffect(() => {
     if (!currentUser) return;
     let cancelled = false;
+    seenMessageIds.current = new Set();
+    messagesInitialized.current = false;
 
     const interval = setInterval(async () => {
       try {
-        const [salesData, campaignsData, attendanceData, payrollData, callbacksData, leadsData, ticketsData, messagesData, groupsData] = await Promise.all([
-          fetchSales(), fetchCampaigns(), fetchAttendance(), fetchPayroll(), fetchCallbacks(), fetchLeads(), fetchTickets(),
-          fetchMessages(), fetchMessageGroups({ all: currentUser.role === 'Admin' })
+        const me = currentUserRef.current;
+        const [usersData, salesData, campaignsData, attendanceData, payrollData, callbacksData, leadsData, ticketsData, messagesData, groupsData] = await Promise.all([
+          fetchUsers(), fetchSales(), fetchCampaigns(), fetchAttendance(), fetchPayroll(), fetchCallbacks(), fetchLeads(), fetchTickets(),
+          fetchMessages(), fetchMessageGroups({ all: me.role === 'Admin' })
         ]);
         if (cancelled) return;
 
-        if (currentUser.role === 'Agent') {
+        // An Admin can change anyone's role at any time (and the server honours it on the
+        // very next request) -- so keep the user list fresh and, if *my* role just changed,
+        // switch this session over to the right portal instead of leaving it half-working.
+        setAllUsers(usersData);
+        const freshMe = usersData.find(u => u.id === me.id);
+        if (freshMe && freshMe.role !== me.role) {
+          setCurrentUser(freshMe);
+          setActiveTab('overview');
+        }
+
+        if (me.role === 'Agent') {
           const prevSales = salesRef.current;
           for (const freshSale of salesData) {
-            if (freshSale.agentId !== currentUser.id) continue;
+            if (freshSale.agentId !== me.id) continue;
             const prior = prevSales.find(s => s.id === freshSale.id);
             if (prior && prior.status === 'Pending' && freshSale.status !== 'Pending') {
               const notif = {
@@ -220,23 +260,27 @@ export default function App() {
           messagesData.forEach(m => seenMessageIds.current.add(m.id));
           messagesInitialized.current = true;
         } else {
-          const incoming = messagesData.filter(m => m.senderId !== currentUser.id && !seenMessageIds.current.has(m.id));
+          const incoming = messagesData.filter(m => m.senderId !== me.id && !seenMessageIds.current.has(m.id));
           if (incoming.length > 0) {
             incoming.forEach(m => seenMessageIds.current.add(m.id));
-            if (chatPanelStateRef.current !== 'open') {
-              setChatUnreadCount(c => c + incoming.length);
+            // The unread badges/counts come from useUnreadTracker. This block only decides
+            // whether to *interrupt* the user: no toast for a message in the conversation
+            // they are looking at right now (it just appears in the thread) -- unless the
+            // tab is in the background, where it's the only way they'd find out.
+            const viewing = Object.values(viewingRef.current);
+            const notifiable = document.hidden ? incoming : incoming.filter(m => !viewing.includes(m.channel));
+            if (notifiable.length > 0) {
+              const latest = notifiable[notifiable.length - 1];
+              const groupName = groupsData.find(g => g.id === latest.channel)?.name;
+              const from = groupName ? `${latest.senderName} in ${groupName}` : latest.senderName;
+              // `channel` is what lets clicking the toast / bell entry open that exact conversation.
+              const notif = notifiable.length === 1
+                ? { title: `New message from ${from}`, message: latest.text, time: 'Just now', read: false, type: 'message', channel: latest.channel }
+                : { title: `${notifiable.length} new messages`, message: `Latest from ${from}: ${latest.text}`, time: 'Just now', read: false, type: 'message', channel: latest.channel };
+              setNotifications(n => [notif, ...n]);
+              setLatestNotification(notif);
+              showDesktopNotification(notif.title, notif.message, () => openChatToRef.current(notif));
             }
-            // A badge on the chat icon is easy to miss if you're not looking
-            // at the navbar -- surface it the same way a sale approval does,
-            // as an actual toast + bell-dropdown entry, regardless of which
-            // page or panel state you're in.
-            const latest = incoming[incoming.length - 1];
-            const notif = incoming.length === 1
-              ? { title: `New message from ${latest.senderName}`, message: latest.text, time: 'Just now', read: false, type: 'message' }
-              : { title: `${incoming.length} new messages`, message: `Latest from ${latest.senderName}: ${latest.text}`, time: 'Just now', read: false, type: 'message' };
-            setNotifications(n => [notif, ...n]);
-            setLatestNotification(notif);
-            showDesktopNotification(notif.title, notif.message);
           }
         }
         setMessages(messagesData);
@@ -288,6 +332,8 @@ export default function App() {
     setLeads([]);
     setPayroll([]);
     setMessages([]);
+    setMessagesLoaded(false);
+    setChatFocus(null);
     setKbArticles([]);
     setTickets([]);
     setActiveTab('overview');
@@ -296,8 +342,21 @@ export default function App() {
   // Chat Drawer Handlers
   const handleOpenChat = () => {
     setChatPanelState('open');
-    setChatUnreadCount(0);
   };
+
+  // Clicking a message notification (toast, bell entry or desktop alert) lands you in
+  // that exact conversation. On the dashboard the floating messenger is already the
+  // chat window, so use it; anywhere else (or if the drawer is already open) use the
+  // navbar drawer, which exists on every page.
+  const handleOpenNotification = (notif) => {
+    setNotifications(list => list.map(n => (n === notif ? { ...n, read: true } : n)));
+    if (latestNotification === notif) setLatestNotification(null);
+    if (!notif?.channel) return;
+    const target = activeTab === 'overview' && chatPanelState !== 'open' ? 'inline' : 'drawer';
+    setChatFocus({ channel: notif.channel, target, nonce: `${Date.now()}-${Math.random()}` });
+    if (target === 'drawer') setChatPanelState('open');
+  };
+  openChatToRef.current = handleOpenNotification;
 
   const handleMinimizeChat = () => {
     setChatPanelState('minimized');
@@ -327,6 +386,8 @@ export default function App() {
     }
   };
 
+  const dismissCelebration = useCallback(() => setCelebration(null), []);
+
   // Sale Handlers
   const handleSubmitSale = async (newSale) => {
     try {
@@ -334,10 +395,12 @@ export default function App() {
         campaignId: selectedCampaignId,
         ...newSale
       });
-      setSales(await fetchSales());
+      const [freshSales, freshCampaigns] = await Promise.all([fetchSales(), fetchCampaigns()]);
+      setSales(freshSales);
+      setProjects(freshCampaigns);
       const notif = {
-        title: 'Administrative Review Required',
-        message: `${saved.agentName} logged deal ${saved.id} (Rs. ${saved.amount.toLocaleString()})`,
+        title: 'QA Review Required',
+        message: `${saved.agentName} logged deal ${saved.id}${saved.amount > 0 ? ` (Rs. ${saved.amount.toLocaleString()})` : ''}`,
         time: 'Just now',
         read: false,
         type: 'alert'
@@ -345,7 +408,21 @@ export default function App() {
       setNotifications([notif, ...notifications]);
       setLatestNotification(notif);
       showDesktopNotification(notif.title, notif.message);
-      setCelebrationQuote(randomMotivationalQuote());
+      const mine = countMySales(freshSales, currentUser.id);
+      const campaign = freshCampaigns.find(c => c.id === (saved.campaignId || selectedCampaignId));
+      // The agent's own monthly target (set by their Admin/Supervisor) is what they are chasing, so
+      // it wins; without one, fall back to the campaign's team goal.
+      const personalTarget = targets.find(t => t.agentId === currentUser.id)?.monthlySalesTarget || 0;
+      const usePersonal = personalTarget > 0;
+      setCelebration(buildCelebration({
+        agentName: currentUser.name,
+        campaignName: campaign?.name,
+        salesToday: Math.max(1, mine.today),
+        salesThisMonth: Math.max(1, mine.month),
+        goal: usePersonal ? personalTarget : (campaign?.monthlySalesGoal || 0),
+        goalProgress: usePersonal ? Math.max(1, mine.month) : (campaign?.monthSalesCount || 0),
+        goalKind: usePersonal ? 'personal' : 'campaign'
+      }));
     } catch (err) {
       console.error('Failed to submit sale', err);
     }
@@ -448,6 +525,17 @@ export default function App() {
     setAllUsers(await fetchUsers());
   };
 
+  // Individual monthly sales-count target for an agent (Admin: any agent, Supervisor: their own agents).
+  const handleUpdateSalesTarget = async (agentId, monthlySalesTarget) => {
+    await updateTarget(agentId, { monthlySalesTarget });
+    setTargets(await fetchTargets());
+  };
+
+  const handleChangeRole = async (userId, role) => {
+    await updateUserRole(userId, role);
+    setAllUsers(await fetchUsers());
+  };
+
   const handleResetPassword = async (userId) => {
     const result = await resetUserPassword(userId);
     setAllUsers(await fetchUsers());
@@ -461,8 +549,7 @@ export default function App() {
       name: newProj.name,
       client: newProj.client,
       category: newProj.category,
-      monthlyTargetPkr: newProj.monthlyTargetPkr,
-      commissionRate: newProj.commissionRate,
+      monthlySalesGoal: newProj.monthlySalesGoal,
       assignedAgentIds: newProj.assignedAgentIds
     });
     setProjects(await fetchCampaigns());
@@ -555,6 +642,7 @@ export default function App() {
   }
 
   return (
+    <ChatContext.Provider value={chatContextValue}>
     <div className="app-container">
       <Sidebar
         currentRole={currentUser.role}
@@ -577,7 +665,8 @@ export default function App() {
           selectedCampaignId={selectedCampaignId}
           onSelectCampaign={setSelectedCampaignId}
           onToggleChat={handleOpenChat}
-          chatUnreadCount={chatUnreadCount}
+          chatUnreadCount={totalUnread}
+          onOpenNotification={handleOpenNotification}
         />
 
         <main className="content-area">
@@ -685,6 +774,9 @@ export default function App() {
               onUpdateUserCampaigns={handleUpdateUserCampaigns}
               onUpdateBaseSalary={handleUpdateBaseSalary}
               onResetPassword={handleResetPassword}
+              onChangeRole={handleChangeRole}
+              targets={targets}
+              onUpdateSalesTarget={handleUpdateSalesTarget}
             />
           )}
 
@@ -772,19 +864,20 @@ export default function App() {
         onSubmitSale={handleSubmitSale}
       />
 
-      {celebrationQuote && (
-        <SaleCelebration quote={celebrationQuote} onDone={() => setCelebrationQuote(null)} />
+      {celebration && (
+        <SaleCelebration celebration={celebration} onDone={dismissCelebration} />
       )}
 
       {/* Floating Notification Toast & Minimizable Task Drawer */}
       <TaskNotificationDrawer
         latestNotification={latestNotification}
         onDismissNotification={() => setLatestNotification(null)}
+        onOpenNotification={handleOpenNotification}
         callbacks={callbacks.filter(c => c.agentId === currentUser.id)}
         attendanceStatus={agentAttendanceStatus}
         onClockAction={handleClockAction}
         isChatMinimized={chatPanelState === 'minimized'}
-        chatUnreadCount={chatUnreadCount}
+        chatUnreadCount={totalUnread}
         onExpandChat={handleOpenChat}
       />
 
@@ -793,12 +886,12 @@ export default function App() {
         isOpen={chatPanelState === 'open'}
         currentUser={currentUser}
         users={allUsers}
-        messages={messages}
         onSendMessage={handleSendMessage}
         onClose={handleCloseChat}
         onMinimize={handleMinimizeChat}
       />
     </div>
+    </ChatContext.Provider>
   );
   }
 

@@ -1,132 +1,24 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Send, MessageCircle, ChevronDown } from 'lucide-react';
-import { dmChannelId, isDmChannel } from '../../utils/chatChannels';
-import { fetchMessages } from '../../api/messages';
-import { fetchMessageGroups } from '../../api/messageGroups';
-import { playBlylinksTone } from '../../utils/sound';
-import { showDesktopNotification } from '../../utils/notifications';
-
-const POLL_INTERVAL_MS = 8000;
+import React, { useEffect, useState } from 'react';
+import { MessageCircle, ChevronDown } from 'lucide-react';
+import ChatWindow from '../Chat/ChatWindow';
+import { useChat } from '../Chat/ChatContext';
 
 export default function DashboardMessenger({ currentUser, users = [], onSendMessage }) {
   const [collapsed, setCollapsed] = useState(false);
-  const [myGroups, setMyGroups] = useState([]);
-  const [activeChannel, setActiveChannel] = useState('');
-  const [dmPartnerId, setDmPartnerId] = useState('');
-  const [allMessages, setAllMessages] = useState([]);
-  const [unreadCount, setUnreadCount] = useState(0);
-  const [textInput, setTextInput] = useState('');
-  const [sendError, setSendError] = useState('');
-  const messagesEndRef = useRef(null);
-  const seenIds = useRef(new Set());
-  const initialized = useRef(false);
+  const { totalUnread, focusRequest } = useChat();
 
-  const dmContacts = useMemo(
-    () => users.filter(u => u.id !== currentUser.id && u.status === 'Active'),
-    [users, currentUser.id]
-  );
-
+  // Clicking a message notification asks this widget to show that conversation.
+  // Expanding mounts ChatWindow, which then picks the request up and selects it.
   useEffect(() => {
-    let cancelled = false;
-
-    async function poll() {
-      try {
-        const [msgs, groups] = await Promise.all([fetchMessages(), fetchMessageGroups()]);
-        if (cancelled) return;
-        setAllMessages(msgs);
-        setMyGroups(groups);
-        setActiveChannel(prev => prev || groups[0]?.id || '');
-
-        if (!initialized.current) {
-          msgs.forEach(m => seenIds.current.add(m.id));
-          initialized.current = true;
-          return;
-        }
-
-        const incoming = msgs.filter(m => m.senderId !== currentUser.id && !seenIds.current.has(m.id));
-        if (incoming.length > 0) {
-          incoming.forEach(m => seenIds.current.add(m.id));
-          if (collapsed) {
-            setUnreadCount(c => c + incoming.length);
-            playBlylinksTone('notification');
-            const latest = incoming[incoming.length - 1];
-            showDesktopNotification(`New message from ${latest.senderName}`, latest.text);
-          }
-        }
-      } catch (err) {
-        console.error('Failed to poll messages', err);
-      }
-    }
-
-    poll();
-    const interval = setInterval(poll, POLL_INTERVAL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(interval);
-    };
-  }, [collapsed, currentUser.id]);
-
-  useEffect(() => {
-    if (!collapsed) {
-      messagesEndRef.current?.scrollIntoView({ block: 'end' });
-    }
-  }, [collapsed, allMessages.length, activeChannel]);
-
-  const channelMessages = useMemo(
-    () => allMessages.filter(m => m.channel === activeChannel),
-    [allMessages, activeChannel]
-  );
-
-  const expand = () => {
-    setCollapsed(false);
-    setUnreadCount(0);
-    allMessages.forEach(m => seenIds.current.add(m.id));
-  };
-
-  const selectChannel = (channelId) => {
-    setActiveChannel(channelId);
-    setDmPartnerId('');
-    setSendError('');
-  };
-
-  const selectDmPartner = (userId) => {
-    setDmPartnerId(userId);
-    setSendError('');
-    if (userId) setActiveChannel(dmChannelId(currentUser.id, userId));
-  };
-
-  const handleSend = async (e) => {
-    e.preventDefault();
-    if (!textInput.trim()) return;
-    if (!activeChannel) {
-      setSendError('Pick a group or start a Direct Message before sending.');
-      return;
-    }
-    setSendError('');
-    try {
-      await onSendMessage({
-        channel: activeChannel,
-        text: textInput,
-        ...(isDmChannel(activeChannel) ? { recipientId: dmPartnerId } : {})
-      });
-    } catch (err) {
-      setSendError(err.message || 'Failed to send message.');
-      return;
-    }
-    setTextInput('');
-    setAllMessages(await fetchMessages());
-  };
-
-  const activeLabel = isDmChannel(activeChannel)
-    ? dmContacts.find(u => u.id === dmPartnerId)?.name || 'Direct Message'
-    : myGroups.find(g => g.id === activeChannel)?.name || '';
+    if (focusRequest?.target === 'inline') setCollapsed(false);
+  }, [focusRequest?.nonce]);
 
   if (collapsed) {
     return (
-      <button className="floating-messenger-bubble" onClick={expand}>
+      <button className="floating-messenger-bubble" onClick={() => setCollapsed(false)}>
         <MessageCircle size={20} />
         <span>Team Messenger</span>
-        {unreadCount > 0 && <span className="floating-messenger-badge">{unreadCount}</span>}
+        {totalUnread > 0 && <span className="floating-messenger-badge" aria-label={`${totalUnread} unread`}>{totalUnread}</span>}
         <style>{`
           .floating-messenger-bubble {
             position: fixed;
@@ -176,69 +68,7 @@ export default function DashboardMessenger({ currentUser, users = [], onSendMess
         </button>
       </div>
 
-      <div className="floating-messenger-tabs-row">
-        <div className="messenger-channel-tabs">
-          {myGroups.length === 0 && (
-            <span className="messenger-no-groups-hint">No group channels yet — ask your Admin/Supervisor to add you.</span>
-          )}
-          {myGroups.map(g => (
-            <button
-              key={g.id}
-              className={`messenger-channel-tab ${!isDmChannel(activeChannel) && activeChannel === g.id ? 'active' : ''}`}
-              onClick={() => selectChannel(g.id)}
-              title={g.name}
-            >
-              {g.name}
-            </button>
-          ))}
-        </div>
-        <select
-          className="form-select messenger-dm-select"
-          value={dmPartnerId}
-          onChange={(e) => selectDmPartner(e.target.value)}
-        >
-          <option value="">Direct Message…</option>
-          {dmContacts.map(u => (
-            <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
-          ))}
-        </select>
-      </div>
-
-      <div className="messenger-body">
-        {!activeChannel ? (
-          <div className="messenger-empty">Pick a group or start a Direct Message to begin.</div>
-        ) : channelMessages.length === 0 ? (
-          <div className="messenger-empty">No messages yet — say hello to {activeLabel}.</div>
-        ) : (
-          channelMessages.map(msg => {
-            const isMine = msg.senderId === currentUser.id;
-            return (
-              <div key={msg.id} className={`messenger-row ${isMine ? 'mine' : ''}`}>
-                <div className="messenger-bubble">
-                  {!isMine && <span className="messenger-sender">{msg.senderName}</span>}
-                  <span className="messenger-text">{msg.text}</span>
-                  <span className="messenger-time">{msg.timestamp}</span>
-                </div>
-              </div>
-            );
-          })
-        )}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {sendError && <div className="messenger-send-error">{sendError}</div>}
-
-      <form className="messenger-input-row" onSubmit={handleSend}>
-        <input
-          type="text"
-          className="form-input"
-          placeholder={`Message ${activeLabel}...`}
-          value={textInput}
-          onChange={(e) => setTextInput(e.target.value)}
-          autoComplete="off"
-        />
-        <button type="submit" className="icon-btn" aria-label="Send message"><Send size={16} /></button>
-      </form>
+      <ChatWindow variant="inline" visible currentUser={currentUser} users={users} onSendMessage={onSendMessage} />
 
       <style>{`
         .floating-messenger-panel {
@@ -246,7 +76,7 @@ export default function DashboardMessenger({ currentUser, users = [], onSendMess
           bottom: 0;
           left: 50%;
           transform: translateX(-50%);
-          width: min(720px, calc(100vw - 32px));
+          width: min(760px, calc(100vw - 32px));
           background: var(--bg-card);
           border: 1px solid var(--accent);
           border-bottom: none;
@@ -274,25 +104,6 @@ export default function DashboardMessenger({ currentUser, users = [], onSendMess
         .floating-messenger-title { display: flex; align-items: center; gap: 0.45rem; font-weight: 700; font-size: 0.85rem; }
         .floating-messenger-collapse { color: #fff; }
         .floating-messenger-collapse:hover { background: rgba(255,255,255,0.18); }
-        .floating-messenger-tabs-row { display: flex; align-items: center; justify-content: space-between; gap: 0.4rem; flex-wrap: wrap; padding: 0.6rem 1rem 0; }
-        .messenger-channel-tabs { display: flex; gap: 0.3rem; flex-wrap: wrap; }
-        .messenger-channel-tab { border: 1px solid var(--border-color); background: var(--bg-primary); color: var(--text-muted); font-size: 0.65rem; font-weight: 600; padding: 0.25rem 0.5rem; border-radius: 9999px; cursor: pointer; white-space: nowrap; }
-        .messenger-channel-tab.active { background: var(--accent-light); color: var(--accent); border-color: var(--accent-light); }
-        .messenger-dm-select { font-size: 0.7rem; padding: 0.25rem 0.5rem; max-width: 150px; }
-        .messenger-no-groups-hint { font-size: 0.7rem; color: var(--text-subtle); }
-        .messenger-send-error { font-size: 0.72rem; color: var(--status-error); padding: 0 1rem 0.4rem; }
-        .messenger-body { display: flex; flex-direction: column; gap: 0.5rem; height: 200px; overflow-y: auto; padding: 0.6rem 1rem; }
-        .messenger-empty { font-size: 0.8rem; color: var(--text-subtle); text-align: center; margin: auto; }
-        .messenger-row { display: flex; }
-        .messenger-row.mine { justify-content: flex-end; }
-        .messenger-bubble { background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 0.4rem 0.6rem; max-width: 82%; display: flex; flex-direction: column; gap: 1px; }
-        .messenger-row.mine .messenger-bubble { background: var(--accent); border-color: var(--accent); color: #fff; }
-        .messenger-sender { font-size: 0.65rem; font-weight: 700; color: var(--text-main); }
-        .messenger-text { font-size: 0.78rem; line-height: 1.35; }
-        .messenger-time { font-size: 0.6rem; opacity: 0.7; }
-        .messenger-input-row { display: flex; gap: 0.4rem; padding: 0.65rem 1rem; border-top: 1px solid var(--border-color); flex-shrink: 0; }
-        .messenger-input-row .form-input { flex: 1; }
-
       `}</style>
     </div>
   );

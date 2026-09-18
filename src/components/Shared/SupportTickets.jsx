@@ -98,7 +98,7 @@ export default function SupportTickets({ currentUser, tickets, onAddTicket, onRe
                       <option value="Payroll & Incentives">Payroll & Incentives</option>
                       <option value="IT & Hardware">IT & Hardware</option>
                       <option value="Attendance & Leave">Attendance & Leave</option>
-                      <option value="Administrative Review Request">Administrative Review Request</option>
+                      <option value="QA Review Request">QA Review Request</option>
                     </select>
                   </div>
                   <div className="form-group">

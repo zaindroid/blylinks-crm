@@ -71,7 +71,7 @@ export default function SaleDetailModal({ sale, onClose }) {
 
           {sale.qaNotes && (
             <>
-              <div className="sale-detail-section-title">Administrative Review Notes</div>
+              <div className="sale-detail-section-title">QA Review Notes</div>
               <div className="sale-detail-notes">{sale.qaNotes}{sale.verifiedBy ? ` — ${sale.verifiedBy}` : ''}</div>
             </>
           )}

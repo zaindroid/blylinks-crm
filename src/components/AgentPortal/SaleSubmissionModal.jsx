@@ -21,7 +21,6 @@ const EMPTY_FORM = {
   gasAccountType: '',
   gasAccountNumber: '',
   confirmationNumber: '',
-  amount: '',
   agentNotes: ''
 };
 
@@ -56,15 +55,12 @@ export default function SaleSubmissionModal({
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!formData.customerName || !formData.phone || !formData.amount) {
-      setError('Please fill in all required fields (Name, Phone 1, Amount).');
+    if (!formData.customerName || !formData.phone) {
+      setError('Please fill in all required fields (Name, Phone 1).');
       return;
     }
 
-    onSubmitSale({
-      ...formData,
-      amount: Number(formData.amount)
-    });
+    onSubmitSale(formData);
     setFormData(EMPTY_FORM);
     onClose();
   };
@@ -121,13 +117,10 @@ export default function SaleSubmissionModal({
               <TextField label="Confirmation Number" field="confirmationNumber" formData={formData} setFormData={setFormData} />
             </div>
             <div className="grid-2">
-              <TextField label="Sale Amount ($ USD)" field="amount" type="number" formData={formData} setFormData={setFormData} required placeholder="e.g. 2500" />
               <div className="form-group">
                 <label className="form-label">Agent Name</label>
                 <input className="form-input" value={currentUser.name} disabled />
               </div>
-            </div>
-            <div className="grid-2">
               <div className="form-group">
                 <label className="form-label">Status</label>
                 <input className="form-input" value="Pending" disabled />

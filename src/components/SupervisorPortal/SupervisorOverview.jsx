@@ -3,6 +3,7 @@ import { CheckCircle, PlusCircle } from 'lucide-react';
 import { formatPKR } from '../../utils/currency';
 import SalesLeaderboard from '../Shared/SalesLeaderboard';
 import DashboardMessenger from '../Shared/DashboardMessenger';
+import Avatar from '../Shared/Avatar';
 
 function statusBadgeClass(status) {
   if (status === 'Present') return 'badge-success';
@@ -42,11 +43,11 @@ export default function SupervisorOverview({
       <div className="page-header">
         <div className="page-header-text">
           <h1 className="page-title">Supervisor Console</h1>
-          <p className="page-subtitle">Team administrative review &amp; lead routing &bull; Active Campaign: <span className="font-bold text-accent">{activeProject?.name}</span></p>
+          <p className="page-subtitle">Team QA review &amp; lead routing &bull; Active Campaign: <span className="font-bold text-accent">{activeProject?.name}</span></p>
         </div>
         <div className="page-header-actions">
           <button className="btn btn-primary" onClick={() => setActiveTab('qa-approval')}>
-            <CheckCircle size={15} /> Administrative Review Queue ({pendingSales.length})
+            <CheckCircle size={15} /> QA Review Queue ({pendingSales.length})
           </button>
           <button className="btn btn-secondary" onClick={() => setActiveTab('leads')}>
             <PlusCircle size={15} /> Add / Assign Lead
@@ -81,12 +82,12 @@ export default function SupervisorOverview({
         </div>
       </div>
 
-      {/* Main Grid: Administrative Review Queue + Shift Roster */}
+      {/* Main Grid: QA Review Queue + Shift Roster */}
       <div className="grid-2">
-        {/* Administrative Review Queue */}
+        {/* QA Review Queue */}
         <div className="card">
           <div className="card-header">
-            <span className="card-title">Administrative Review Queue ({pendingSales.length})</span>
+            <span className="card-title">QA Review Queue ({pendingSales.length})</span>
             <button className="text-btn" onClick={() => setActiveTab('qa-approval')}>View All Queue</button>
           </div>
 
@@ -124,7 +125,7 @@ export default function SupervisorOverview({
               const status = log ? log.status : 'Absent';
               return (
                 <div key={agent.id} className="roster-mini-item">
-                  <img src={agent.avatar} alt={agent.name} className="roster-avatar-mini" />
+                  <Avatar user={agent} className="roster-avatar-mini" />
                   <div className="roster-mini-info">
                     <div className="font-bold text-xs">{agent.name}</div>
                     <div className="text-xs text-muted">{agent.designation}</div>

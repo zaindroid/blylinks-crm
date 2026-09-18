@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Avatar from './Shared/Avatar';
 import {
   Sun,
   Moon,
@@ -28,7 +29,8 @@ export default function Navbar({
   selectedCampaignId,
   onSelectCampaign,
   onToggleChat,
-  chatUnreadCount = 0
+  chatUnreadCount = 0,
+  onOpenNotification
 }) {
   const [showUserDropdown, setShowUserDropdown] = useState(false);
   const [showNotifications, setShowNotifications] = useState(false);
@@ -118,7 +120,18 @@ export default function Navbar({
                   <div className="empty-dropdown">No new notifications</div>
                 ) : (
                   notifications.map((n, idx) => (
-                    <div key={idx} className={`notification-item ${!n.read ? 'unread' : ''}`}>
+                    <div
+                      key={idx}
+                      className={`notification-item ${!n.read ? 'unread' : ''} ${n.channel && onOpenNotification ? 'clickable' : ''}`}
+                      {...(n.channel && onOpenNotification ? {
+                        role: 'button',
+                        tabIndex: 0,
+                        onClick: () => { setShowNotifications(false); onOpenNotification(n); },
+                        onKeyDown: (e) => {
+                          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowNotifications(false); onOpenNotification(n); }
+                        }
+                      } : {})}
+                    >
                       <div className="notif-icon">
                         {n.type === 'alert' ? <AlertCircle size={14} className="text-danger" />
                           : n.type === 'message' ? <MessageSquare size={14} className="text-accent" />
@@ -140,7 +153,7 @@ export default function Navbar({
         {/* Profile & Account Switcher Dropdown */}
         <div className="nav-dropdown-container">
           <button className="user-profile-btn" onClick={() => setShowUserDropdown(!showUserDropdown)}>
-            <img src={currentUser.avatar} alt={currentUser.name} className="user-avatar" />
+            <Avatar user={currentUser} className="user-avatar" />
             <div className="user-info">
               <span className="user-name">{currentUser.name}</span>
               <span className={`user-role-tag ${currentUser.role.toLowerCase()}`}>{currentUser.role}</span>
@@ -152,7 +165,7 @@ export default function Navbar({
             <div className="dropdown-menu user-switcher-menu">
               <div className="dropdown-header-sm">Active Account Profile</div>
               <div className="user-switch-item">
-                <img src={currentUser.avatar} alt={currentUser.name} className="user-avatar-sm" />
+                <Avatar user={currentUser} className="user-avatar-sm" />
                 <div className="user-switch-info">
                   <div className="switch-name">{currentUser.name}</div>
                   <div className="switch-role">{currentUser.role} — {currentUser.designation}</div>

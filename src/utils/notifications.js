@@ -9,7 +9,7 @@ export function requestNotificationPermission() {
   }
 }
 
-export function showDesktopNotification(title, body) {
+export function showDesktopNotification(title, body, onClick) {
   if (typeof window === 'undefined' || !('Notification' in window)) return;
   if (Notification.permission !== 'granted') return;
   if (!document.hidden) return;
@@ -22,6 +22,7 @@ export function showDesktopNotification(title, body) {
     notification.onclick = () => {
       window.focus();
       notification.close();
+      onClick?.();
     };
   } catch {
     // Some environments (e.g. blocked service workers) can throw; fail silently.

@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Briefcase, PlusCircle, CheckCircle, Edit3, Trash2, Users, ShieldCheck, X } from 'lucide-react';
-import { formatPKR } from '../../utils/currency';
 
 export default function AdminProjects({ projects, users, onAddProject, onUpdateProject, onToggleProjectStatus }) {
   const [showAddModal, setShowAddModal] = useState(false);
@@ -12,13 +11,12 @@ export default function AdminProjects({ projects, users, onAddProject, onUpdateP
     name: '',
     client: '',
     category: 'Outbound Telesales',
-    monthlyTargetPkr: '',
-    commissionRate: '',
+    monthlySalesGoal: '',
     assignedAgentIds: []
   });
 
   const handleOpenCreate = () => {
-    setFormData({ name: '', client: '', category: 'Outbound Telesales', monthlyTargetPkr: '', commissionRate: '', assignedAgentIds: [] });
+    setFormData({ name: '', client: '', category: 'Outbound Telesales', monthlySalesGoal: '', assignedAgentIds: [] });
     setShowAddModal(true);
   };
 
@@ -28,8 +26,7 @@ export default function AdminProjects({ projects, users, onAddProject, onUpdateP
       name: proj.name,
       client: proj.client,
       category: proj.category,
-      monthlyTargetPkr: proj.monthlyTargetPkr,
-      commissionRate: proj.commissionRate,
+      monthlySalesGoal: proj.monthlySalesGoal ?? '',
       assignedAgentIds: proj.assignedAgentIds || []
     });
   };
@@ -50,12 +47,11 @@ export default function AdminProjects({ projects, users, onAddProject, onUpdateP
       name: formData.name,
       client: formData.client,
       category: formData.category,
-      monthlyTargetPkr: Number(formData.monthlyTargetPkr),
-      commissionRate: Number(formData.commissionRate),
+      monthlySalesGoal: Number(formData.monthlySalesGoal),
       status: 'Active',
       assignedAgentIds: formData.assignedAgentIds,
       totalSalesCount: 0,
-      totalRevenuePkr: 0
+      monthSalesCount: 0
     };
     onAddProject(newProj);
     setShowAddModal(false);
@@ -68,8 +64,7 @@ export default function AdminProjects({ projects, users, onAddProject, onUpdateP
       name: formData.name,
       client: formData.client,
       category: formData.category,
-      monthlyTargetPkr: Number(formData.monthlyTargetPkr),
-      commissionRate: Number(formData.commissionRate),
+      monthlySalesGoal: Number(formData.monthlySalesGoal),
       assignedAgentIds: formData.assignedAgentIds
     });
     setEditingProject(null);
@@ -90,7 +85,7 @@ export default function AdminProjects({ projects, users, onAddProject, onUpdateP
       <div className="grid-2 margin-bottom">
         {projects.map(p => {
           const assignedAgents = agents.filter(a => p.assignedAgentIds?.includes(a.id));
-          const pct = Math.min(Math.round((p.totalRevenuePkr / p.monthlyTargetPkr) * 100), 100);
+          const pct = p.monthlySalesGoal > 0 ? Math.min(Math.round((p.monthSalesCount / p.monthlySalesGoal) * 100), 100) : 0;
 
           return (
             <div key={p.id} className="card">
@@ -102,14 +97,13 @@ export default function AdminProjects({ projects, users, onAddProject, onUpdateP
               <div className="project-details-grid margin-bottom">
                 <div><span className="text-muted text-xs">CLIENT:</span> <span className="font-bold">{p.client}</span></div>
                 <div><span className="text-muted text-xs">CATEGORY:</span> <span>{p.category}</span></div>
-                <div><span className="text-muted text-xs">COMMISSION:</span> <span className="text-blue font-mono">{p.commissionRate}%</span></div>
                 <div><span className="text-muted text-xs">ASSIGNED AGENTS:</span> <span className="font-bold">{assignedAgents.length} Agents</span></div>
               </div>
 
               <div className="target-progress-block">
                 <div className="target-labels">
-                  <span className="label-text">Monthly PKR Goal Progress</span>
-                  <span className="val-text">{formatPKR(p.totalRevenuePkr)} / {formatPKR(p.monthlyTargetPkr)}</span>
+                  <span className="label-text">Monthly Sales Goal Progress</span>
+                  <span className="val-text">{p.monthSalesCount} / {p.monthlySalesGoal} sales this month</span>
                 </div>
                 <div className="progress-bar-container">
                   <div className="progress-bar-fill" style={{ width: `${pct}%` }}></div>
@@ -150,15 +144,9 @@ export default function AdminProjects({ projects, users, onAddProject, onUpdateP
                   <label className="form-label">Client Name *</label>
                   <input type="text" className="form-input" required value={formData.client} onChange={e => setFormData({...formData, client: e.target.value})} placeholder="e.g. EcoPower Pakistan" />
                 </div>
-                <div className="grid-2">
-                  <div className="form-group">
-                    <label className="form-label">Monthly Goal (PKR Rs.) *</label>
-                    <input type="number" className="form-input" required value={formData.monthlyTargetPkr} onChange={e => setFormData({...formData, monthlyTargetPkr: e.target.value})} placeholder="1500000" />
-                  </div>
-                  <div className="form-group">
-                    <label className="form-label">Commission Rate (%) *</label>
-                    <input type="number" className="form-input" required value={formData.commissionRate} onChange={e => setFormData({...formData, commissionRate: e.target.value})} placeholder="10" />
-                  </div>
+                <div className="form-group">
+                  <label className="form-label">Monthly Sales Goal (No. of Sales) *</label>
+                  <input type="number" className="form-input" required min="0" step="1" value={formData.monthlySalesGoal} onChange={e => setFormData({...formData, monthlySalesGoal: e.target.value})} placeholder="e.g. 150" />
                 </div>
 
                 {/* Agent Access Assignment List */}

@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { UserPlus, Trash2, Settings, X, Users as UsersIcon, DollarSign, KeyRound, Copy, Check } from 'lucide-react';
+import { UserPlus, Trash2, Settings, X, Users as UsersIcon, DollarSign, KeyRound, Copy, Check, Target } from 'lucide-react';
 import { formatPKR } from '../../utils/currency';
 
 const ROLE_OPTIONS = ['Admin', 'Supervisor', 'Agent'];
 
-export default function TeamManagement({ currentUser, users, projects, onAddUser, onDeactivateUser, onUpdateUserCampaigns, onUpdateBaseSalary, onResetPassword }) {
+export default function TeamManagement({ currentUser, users, projects, onAddUser, onDeactivateUser, onUpdateUserCampaigns, onUpdateBaseSalary, onResetPassword, onChangeRole, targets = [], onUpdateSalesTarget }) {
   const isAdmin = currentUser.role === 'Admin';
   const isSupervisor = currentUser.role === 'Supervisor';
 
@@ -12,9 +12,13 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
   const [editingAccessFor, setEditingAccessFor] = useState(null);
   const [editingSalaryFor, setEditingSalaryFor] = useState(null);
   const [salaryValue, setSalaryValue] = useState('');
+  const [editingTargetFor, setEditingTargetFor] = useState(null);
+  const [targetValue, setTargetValue] = useState('');
+  const [targetError, setTargetError] = useState('');
   const [error, setError] = useState('');
   const [resetResult, setResetResult] = useState(null); // { name, tempPassword }
   const [resetError, setResetError] = useState('');
+  const [roleError, setRoleError] = useState('');
   const [copied, setCopied] = useState(false);
 
   const ownCampaignIds = currentUser.allowedCampaignIds || [];
@@ -44,6 +48,29 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
   const openEditSalary = (user) => {
     setSalaryValue(String(user.baseSalaryPkr || 0));
     setEditingSalaryFor(user);
+  };
+
+  const salesTargetOf = (userId) => targets.find(t => t.agentId === userId)?.monthlySalesTarget || 0;
+
+  const openEditTarget = (user) => {
+    setTargetValue(String(salesTargetOf(user.id)));
+    setTargetError('');
+    setEditingTargetFor(user);
+  };
+
+  const handleSaveTarget = async (e) => {
+    e.preventDefault();
+    const value = Number(targetValue);
+    if (!Number.isInteger(value) || value < 0) {
+      setTargetError('Enter a whole number of sales (0 or more).');
+      return;
+    }
+    try {
+      await onUpdateSalesTarget(editingTargetFor.id, value);
+      setEditingTargetFor(null);
+    } catch (err) {
+      setTargetError(err.message || 'Could not save the target.');
+    }
   };
 
   const toggleCampaign = (campaignId, listSetter, list) => {
@@ -80,6 +107,16 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
       setCopied(false);
     } catch (err) {
       setResetError(err.message || 'Could not reset password.');
+    }
+  };
+
+  const handleChangeRole = async (user, role) => {
+    if (role === user.role) return;
+    setRoleError('');
+    try {
+      await onChangeRole(user.id, role);
+    } catch (err) {
+      setRoleError(err.message || 'Could not change role.');
     }
   };
 
@@ -134,6 +171,7 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
               <th>Username</th>
               <th>Role</th>
               <th>Campaign Access</th>
+              <th>Monthly Sales Target</th>
               {isAdmin && <th>Base Salary</th>}
               <th>Status</th>
               <th>Action</th>
@@ -141,14 +179,30 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
           </thead>
           <tbody>
             {visibleUsers.length === 0 ? (
-              <tr><td colSpan={isAdmin ? 7 : 6} style={{ textAlign: 'center', padding: '1.5rem' }}>No team members yet.</td></tr>
+              <tr><td colSpan={isAdmin ? 8 : 7} style={{ textAlign: 'center', padding: '1.5rem' }}>No team members yet.</td></tr>
             ) : (
               visibleUsers.map(u => (
                 <tr key={u.id}>
                   <td className="font-bold">{u.name}</td>
                   <td className="text-muted">{u.username}</td>
-                  <td><span className={`badge ${u.role === 'Admin' ? 'badge-error' : u.role === 'Supervisor' ? 'badge-warning' : 'badge-neutral'}`}>{u.role}</span></td>
+                  <td>
+                    {isAdmin && u.id !== currentUser.id && u.status === 'Active' ? (
+                      <select
+                        className="form-select role-select"
+                        aria-label={`Role for ${u.name}`}
+                        value={u.role}
+                        onChange={e => handleChangeRole(u, e.target.value)}
+                      >
+                        {ROLE_OPTIONS.map(r => <option key={r} value={r}>{r}</option>)}
+                      </select>
+                    ) : (
+                      <span className={`badge ${u.role === 'Admin' ? 'badge-error' : u.role === 'Supervisor' ? 'badge-warning' : 'badge-neutral'}`}>{u.role}</span>
+                    )}
+                  </td>
                   <td className="text-sm">{campaignNames(u.allowedCampaignIds)}</td>
+                  <td className="font-mono text-sm">
+                    {u.role !== 'Agent' ? '—' : salesTargetOf(u.id) > 0 ? `${salesTargetOf(u.id)} sales` : <span className="text-subtle">Not set</span>}
+                  </td>
                   {isAdmin && <td className="font-mono text-sm">{formatPKR(u.baseSalaryPkr || 0)}</td>}
                   <td><span className={`badge ${u.status === 'Active' ? 'badge-success' : 'badge-neutral'}`}>{u.status}</span></td>
                   <td>
@@ -156,6 +210,11 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
                       {isAdmin && (
                         <button className="btn btn-secondary btn-sm" onClick={() => openEditAccess(u)} title="Edit campaign access">
                           <Settings size={13} /> Access
+                        </button>
+                      )}
+                      {u.role === 'Agent' && u.status === 'Active' && (
+                        <button className="btn btn-secondary btn-sm" onClick={() => openEditTarget(u)} title="Set this agent's monthly sales target">
+                          <Target size={13} /> Target
                         </button>
                       )}
                       {isAdmin && (
@@ -284,6 +343,43 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
         </div>
       )}
 
+      {editingTargetFor && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '400px' }}>
+            <div className="modal-header">
+              <span className="modal-title">Monthly Sales Target — {editingTargetFor.name}</span>
+              <button className="icon-btn" onClick={() => setEditingTargetFor(null)} aria-label="Close"><X size={18} /></button>
+            </div>
+            <form onSubmit={handleSaveTarget}>
+              <div className="modal-body">
+                <div className="form-group">
+                  <label className="form-label" htmlFor="sales-target-input">Number of sales per month</label>
+                  <input
+                    id="sales-target-input"
+                    type="number"
+                    min="0"
+                    step="1"
+                    className="form-input"
+                    value={targetValue}
+                    onChange={e => setTargetValue(e.target.value)}
+                    placeholder="e.g. 60"
+                    autoFocus
+                  />
+                  <div className="text-xs text-subtle" style={{ marginTop: '0.35rem' }}>
+                    This is the agent's personal goal. They see their progress on their dashboard and after every sale. Use 0 to clear it.
+                  </div>
+                </div>
+                {targetError && <div className="error-alert">{targetError}</div>}
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary" onClick={() => setEditingTargetFor(null)}>Cancel</button>
+                <button type="submit" className="btn btn-primary">Save Target</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {editingSalaryFor && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -332,6 +428,23 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
         </div>
       )}
 
+      {roleError && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '380px' }}>
+            <div className="modal-header">
+              <span className="modal-title">Could Not Change Role</span>
+              <button className="icon-btn" onClick={() => setRoleError('')}><X size={18} /></button>
+            </div>
+            <div className="modal-body">
+              <div className="error-alert">{roleError}</div>
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-primary" onClick={() => setRoleError('')}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {resetError && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxWidth: '380px' }}>
@@ -350,6 +463,7 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
       )}
 
       <style>{`
+        .role-select { font-size: 0.78rem; padding: 0.25rem 0.5rem; min-width: 110px; }
         .agent-checkboxes-list { display: flex; flex-direction: column; gap: 0.4rem; background: var(--bg-primary); padding: 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); }
         .agent-checkbox-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; cursor: pointer; }
         .reset-pw-warning { font-size: 0.8rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 0.85rem; }

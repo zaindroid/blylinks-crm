@@ -10,3 +10,9 @@ export function dmChannelId(userIdA, userIdB) {
 export function isDmChannel(channelId) {
   return typeof channelId === 'string' && channelId.startsWith(DM_PREFIX);
 }
+
+// The other participant of a DM channel, from `myId`'s point of view.
+export function dmPartnerId(channelId, myId) {
+  if (!isDmChannel(channelId)) return '';
+  return channelId.slice(DM_PREFIX.length).split('|').find(id => id !== myId) || '';
+}

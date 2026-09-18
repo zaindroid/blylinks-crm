@@ -42,7 +42,7 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
     <div className="qa-approval-container">
       <div className="page-header">
         <div>
-          <h1 className="page-title">Administrative Review — Order Approval Queue</h1>
+          <h1 className="page-title">QA Review — Order Approval Queue</h1>
           <p className="page-subtitle">Review agent submitted orders, verify details, approve commissions or reject invalid entries.</p>
         </div>
       </div>
@@ -172,7 +172,7 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
               </div>
 
               <div className="form-group">
-                <label className="form-label">Administrative Review Note & Rejection/Approval Reason *</label>
+                <label className="form-label">QA Review Note & Rejection/Approval Reason *</label>
                 <textarea
                   className="form-textarea"
                   rows="3"

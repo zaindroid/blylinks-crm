@@ -58,6 +58,37 @@ describe('attendance clock-in Present/Tardy policy', () => {
     expect(log.status).toBe('Tardy');
   });
 
+  // The stored/displayed times must be Pakistan time whatever timezone the server runs in --
+  // previously they used the server's local zone (UTC in a container), so a clock-in at
+  // 8:05 PM PKT was recorded and shown as "03:05 PM".
+  it('records the clock-in time in PKT, not the server timezone (15:05 UTC = 08:05 PM PKT)', async () => {
+    const log = await clockInAt(20, 5);
+    expect(log.clockIn).toBe('08:05 PM');
+    expect(log.status).toBe('Present');
+  });
+
+  it('records the clock-out time in PKT too', async () => {
+    vi.setSystemTime(pktTimeToUtc(19, 0));
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+    await request(app).post('/api/attendance/clock-in').set('Authorization', `Bearer ${agent.token}`);
+    vi.setSystemTime(pktTimeToUtc(23, 30));
+    const res = await request(app).post('/api/attendance/clock-out').set('Authorization', `Bearer ${agent.token}`);
+    expect(res.body.clockOut).toBe('11:30 PM');
+  });
+
+  it('logs the shift date in PKT: 1:20 AM PKT on the 20th is still the 19th in UTC, but must be dated the 20th', async () => {
+    const log = await clockInAt(25, 20); // 25:20 -> 1:20 AM PKT the next calendar day
+    expect(log.clockIn).toBe('01:20 AM');
+    expect(log.date).toBe('2026-08-20');
+    expect(log.status).toBe('Tardy');
+  });
+
+  it('a clock-in a full hour after shift start is Tardy and shows the PKT time (9:00 PM)', async () => {
+    const log = await clockInAt(21, 0);
+    expect(log.clockIn).toBe('09:00 PM');
+    expect(log.status).toBe('Tardy');
+  });
+
   it('clock-out requires an existing open clock-in', async () => {
     const agent = await createAgentViaApi(admin.token, [campaignId]);
     const res = await request(app).post('/api/attendance/clock-out').set('Authorization', `Bearer ${agent.token}`);

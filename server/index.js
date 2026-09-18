@@ -3,9 +3,15 @@ const logger = require('./logger');
 const migrate = require('./db/migrate');
 const buildApp = require('./app');
 const pool = require('./db/pool');
+const { ensureDefaultGroups } = require('./utils/defaultGroups');
 
 async function main() {
   await migrate();
+
+  const recreatedGroups = await ensureDefaultGroups(pool);
+  if (recreatedGroups.length > 0) {
+    logger.warn({ groups: recreatedGroups }, 'default message groups were missing and have been re-created');
+  }
 
   const app = buildApp();
   const server = app.listen(config.port, () => {
