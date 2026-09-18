@@ -188,11 +188,22 @@ describe('row ids created in a burst', () => {
     expect(ids.size).toBe(100000);
   });
 
-  it('the old genId() does collide in a burst -- which is exactly why bulk imports must not use it', () => {
-    const genId = require('../utils/genId');
-    const ids = new Set();
-    for (let i = 0; i < 100000; i++) ids.add(genId('dnc'));
-    expect(ids.size).toBeLessThan(100000);
+  it('the old genId() does collide when a burst lands in the same millisecond -- which is exactly why bulk imports must not use it', () => {
+    // genId()'s uniqueness comes entirely from Date.now() + 24 random bits, so two ids minted in the
+    // same millisecond only differ by those 24 bits -- generating enough of them guarantees a collision
+    // by the birthday paradox. A real burst may or may not land in one millisecond depending on machine
+    // speed (this is what made the bug intermittent in production), so the clock is pinned here rather
+    // than relying on timing, which would make this assertion flaky.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-01-01T00:00:00.000Z'));
+    try {
+      const genId = require('../utils/genId');
+      const ids = new Set();
+      for (let i = 0; i < 100000; i++) ids.add(genId('dnc'));
+      expect(ids.size).toBeLessThan(100000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
