@@ -120,3 +120,44 @@ describe('individual monthly sales-count targets', () => {
     expect(res.body.monthlySalesTarget).toBe(0);
   });
 });
+
+describe('GET /api/targets scoping', () => {
+  const list = (token) => request(app).get('/api/targets').set(auth(token));
+
+  it('an Admin sees every agent\'s target', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+    await setTarget(admin.token, agent.id, { monthlySalesTarget: 10 });
+
+    const res = await list(admin.token);
+    expect(res.body.some(t => t.agentId === agent.id)).toBe(true);
+  });
+
+  it('a Supervisor sees only the targets of agents they share campaign access with', async () => {
+    const admin = await createAdmin();
+    const mine = await createCampaign(admin.token);
+    const elsewhere = await createCampaign(admin.token);
+    const supervisor = await createSupervisor(admin, [mine]);
+    const myAgent = await createAgentViaApi(admin.token, [mine]);
+    const otherAgent = await createAgentViaApi(admin.token, [elsewhere]);
+    await setTarget(admin.token, myAgent.id, { monthlySalesTarget: 20 });
+    await setTarget(admin.token, otherAgent.id, { monthlySalesTarget: 99 });
+
+    const res = await list(supervisor.token);
+    expect(res.body.map(t => t.agentId)).toContain(myAgent.id);
+    expect(res.body.map(t => t.agentId)).not.toContain(otherAgent.id);
+  });
+
+  it('an Agent still sees only their own target', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agentA = await createAgentViaApi(admin.token, [campaignId]);
+    const agentB = await createAgentViaApi(admin.token, [campaignId]);
+    await setTarget(admin.token, agentA.id, { monthlySalesTarget: 5 });
+    await setTarget(admin.token, agentB.id, { monthlySalesTarget: 6 });
+
+    const res = await list(agentA.token);
+    expect(res.body.map(t => t.agentId)).toEqual([agentA.id]);
+  });
+});

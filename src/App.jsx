@@ -9,6 +9,7 @@ import SaleSubmissionModal from './components/AgentPortal/SaleSubmissionModal';
 import AgentSalesTracker from './components/AgentPortal/AgentSalesTracker';
 import AgentCallbacks from './components/AgentPortal/AgentCallbacks';
 import AgentAttendanceHistory from './components/AgentPortal/AgentAttendanceHistory';
+import AgentSalary from './components/AgentPortal/AgentSalary';
 import QASalesApproval from './components/AdminPortal/QASalesApproval';
 import AdminAttendance from './components/AdminPortal/AdminAttendance';
 import AdminTargets from './components/AdminPortal/AdminTargets';
@@ -760,6 +761,10 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'my-salary' && (
+            <AgentSalary currentUser={currentUser} payroll={payroll} />
+          )}
+
           {/* SUPERVISOR & ADMIN TABS */}
           {activeTab === 'qa-approval' && (
             <QASalesApproval
@@ -817,9 +822,9 @@ export default function App() {
             />
           )}
 
-          {/* ADMIN-ONLY TABS */}
           {activeTab === 'targets' && (
             <AdminTargets
+              currentUser={currentUser}
               users={allUsers}
               sales={sales}
               targets={targets}
@@ -827,6 +832,18 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'projects' && (
+            <AdminProjects
+              currentUser={currentUser}
+              projects={projects}
+              users={allUsers}
+              onAddProject={handleAddProject}
+              onUpdateProject={handleUpdateProject}
+              onToggleProjectStatus={handleToggleProjectStatus}
+            />
+          )}
+
+          {/* ADMIN-ONLY TABS */}
           {activeTab === 'payroll' && (
             <AdminPayroll
               payroll={payroll}
@@ -834,16 +851,6 @@ export default function App() {
               onTogglePaymentStatus={handleTogglePaymentStatus}
               onGeneratePayroll={handleGeneratePayroll}
               onUpdatePayrollAdjustments={handleUpdatePayrollAdjustments}
-            />
-          )}
-
-          {activeTab === 'projects' && (
-            <AdminProjects
-              projects={projects}
-              users={allUsers}
-              onAddProject={handleAddProject}
-              onUpdateProject={handleUpdateProject}
-              onToggleProjectStatus={handleToggleProjectStatus}
             />
           )}
 

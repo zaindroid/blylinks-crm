@@ -2,7 +2,7 @@ const express = require('express');
 const pool = require('../db/pool');
 const asyncHandler = require('../utils/asyncHandler');
 const { requireRole } = require('../middleware/auth');
-const { getAllowedCampaignIds } = require('../db/usersRepo');
+const { getAllowedCampaignIds, shareCampaignAccess } = require('../db/usersRepo');
 
 const router = express.Router();
 
@@ -31,7 +31,13 @@ async function listCampaigns() {
     ) m ON m.campaign_id = c.id
     ORDER BY c.created_at ASC
   `);
-  const { rows: links } = await pool.query('SELECT campaign_id, user_id FROM campaign_access');
+  // campaign_access also carries a Supervisor's own management access to the campaign (it's what
+  // getAllowedCampaignIds scopes their view by), which is a different thing from "which agents are
+  // assigned to work it" -- assignedAgentIds below must mean only the latter, matching both its
+  // name and the write side (the PATCH handler only ever deletes/inserts Agent-role rows).
+  const { rows: links } = await pool.query(
+    `SELECT ca.campaign_id, ca.user_id FROM campaign_access ca JOIN users u ON u.id = ca.user_id WHERE u.role = 'Agent'`
+  );
   const byCampaign = {};
   for (const l of links) {
     if (!byCampaign[l.campaign_id]) byCampaign[l.campaign_id] = [];
@@ -51,6 +57,19 @@ async function listCampaigns() {
     monthSalesCount: Number(row.month_sales_count),
     totalRevenuePkr: Number(row.total_revenue_pkr)
   }));
+}
+
+// A Supervisor may only ever assign agents they themselves already share campaign access with --
+// mirrors the same check used for Team Management and Message Groups. Admin is unrestricted.
+async function assertAgentsInScope(req, agentIds) {
+  if (req.user.role !== 'Supervisor') return;
+  const checks = await Promise.all(agentIds.map(uid => shareCampaignAccess(req.user.id, uid)));
+  const outOfScope = agentIds.filter((_, i) => !checks[i]);
+  if (outOfScope.length > 0) {
+    const err = new Error('You can only assign agents within your own campaign scope');
+    err.status = 403;
+    throw err;
+  }
 }
 
 // undefined/null/'' means "not provided"; anything else must be a whole number >= 0.
@@ -101,11 +120,31 @@ router.post('/', requireRole('Admin'), asyncHandler(async (req, res) => {
   res.status(201).json(await listCampaigns());
 }));
 
-router.patch('/:id', requireRole('Admin'), asyncHandler(async (req, res) => {
+// A Supervisor may edit a campaign's own details and reassign its agents -- but only for a
+// campaign they already have access to, and only to agents they themselves share campaign
+// access with (assertAgentsInScope). Creating a campaign and toggling Active/Inactive stay
+// Admin-only below: those are organisation-wide decisions, not day-to-day campaign upkeep.
+router.patch('/:id', requireRole('Admin', 'Supervisor'), asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { name, client, category, monthlyTargetPkr, commissionRate, monthlySalesGoal, assignedAgentIds } = req.body;
   const goal = parseSalesGoal(monthlySalesGoal);
   if (goal.error) return res.status(400).json({ error: goal.error });
+
+  if (req.user.role === 'Supervisor') {
+    const allowedCampaignIds = await getAllowedCampaignIds(req.user.id);
+    if (!allowedCampaignIds.includes(id)) {
+      return res.status(403).json({ error: 'This campaign is outside your campaign access' });
+    }
+  }
+
+  if (Array.isArray(assignedAgentIds)) {
+    try {
+      await assertAgentsInScope(req, assignedAgentIds);
+    } catch (err) {
+      if (err.status) return res.status(err.status).json({ error: err.message });
+      throw err;
+    }
+  }
 
   await pool.query(
     `UPDATE campaigns SET
@@ -120,11 +159,26 @@ router.patch('/:id', requireRole('Admin'), asyncHandler(async (req, res) => {
   );
 
   if (Array.isArray(assignedAgentIds)) {
+    // Only ever touches Agent-role rows. campaign_access also carries a Supervisor's own
+    // visibility into the campaign (getAllowedCampaignIds scopes their GET by the same rows) --
+    // a blanket "delete everything for this campaign" here would wipe that out from under the
+    // very Supervisor submitting the edit and lock them out of the campaign they just changed.
+    // Restricting both the delete and the re-insert to real Agents keeps management access
+    // (who can see/edit the campaign) and work assignment (who is assigned to it) independent.
+    const { rows: agentRows } = await pool.query(
+      `SELECT id FROM users WHERE id = ANY($1) AND role = 'Agent'`,
+      [assignedAgentIds]
+    );
+    const agentIds = agentRows.map(r => r.id);
+
     const dbClient = await pool.connect();
     try {
       await dbClient.query('BEGIN');
-      await dbClient.query('DELETE FROM campaign_access WHERE campaign_id = $1', [id]);
-      for (const userId of assignedAgentIds) {
+      await dbClient.query(
+        `DELETE FROM campaign_access WHERE campaign_id = $1 AND user_id IN (SELECT id FROM users WHERE role = 'Agent')`,
+        [id]
+      );
+      for (const userId of agentIds) {
         await dbClient.query('INSERT INTO campaign_access (campaign_id, user_id) VALUES ($1,$2)', [id, userId]);
       }
       await dbClient.query('COMMIT');

@@ -35,6 +35,20 @@ async function shareCampaignAccess(userIdA, userIdB) {
   return rows.length > 0;
 }
 
+// Every user id that shares at least one campaign with `userId` -- the batch form of
+// shareCampaignAccess, for scoping a *list* endpoint (a Supervisor's view of targets, etc.)
+// in one query instead of one shareCampaignAccess call per row. Includes the caller's own id.
+async function getScopedAgentIds(userId) {
+  const { rows } = await pool.query(
+    `SELECT DISTINCT ca2.user_id AS agent_id
+     FROM campaign_access ca1
+     JOIN campaign_access ca2 ON ca1.campaign_id = ca2.campaign_id
+     WHERE ca1.user_id = $1`,
+    [userId]
+  );
+  return rows.map(r => r.agent_id);
+}
+
 async function findUserRowByUsername(username) {
   const { rows } = await pool.query('SELECT * FROM users WHERE lower(username) = lower($1)', [username]);
   return rows[0] || null;
@@ -95,7 +109,7 @@ function sanitizeUsersForViewer(users, viewer) {
 }
 
 module.exports = {
-  reshapeUser, getAllowedCampaignIds, shareCampaignAccess,
+  reshapeUser, getAllowedCampaignIds, shareCampaignAccess, getScopedAgentIds,
   findUserRowByUsername, findUserRowById, findAuthInfoById, toPublicUser, listPublicUsers,
   sanitizeUsersForViewer
 };

@@ -19,7 +19,7 @@
       "get": { "summary": "List campaigns", "responses": { "200": { "description": "OK" } } },
       "post": { "summary": "Create campaign (Admin)", "responses": { "201": { "description": "Created" } } }
     },
-    "/api/campaigns/{id}": { "patch": { "summary": "Update campaign (Admin)", "responses": { "200": { "description": "OK" } } } },
+    "/api/campaigns/{id}": { "patch": { "summary": "Update campaign details and reassign agents (Admin: any campaign, any agent; Supervisor: only a campaign they already have access to, and only agents they themselves share campaign access with -- assignedAgentIds only ever contains Agent-role users, never a Supervisor's own management-access row)", "responses": { "200": { "description": "OK" } } } },
     "/api/campaigns/{id}/toggle-status": { "patch": { "summary": "Toggle campaign active status (Admin)", "responses": { "200": { "description": "OK" } } } },
     "/api/sales": {
       "get": { "summary": "List sales (optional ?campaignId filter). Each sale includes full utility-order fields: address/apt/city/state/zipCode, phone2, supplierName, electric/gas utility+account+rate fields, confirmationNumber, and a raw saleDateIso for client-side date-range filtering.", "responses": { "200": { "description": "OK" } } },
@@ -31,8 +31,8 @@
     "/api/attendance/clock-in": { "post": { "summary": "Clock in", "responses": { "201": { "description": "Created" } } } },
     "/api/attendance/clock-out": { "post": { "summary": "Clock out", "responses": { "200": { "description": "OK" } } } },
     "/api/attendance/{id}": { "patch": { "summary": "Update attendance status (Admin/Supervisor)", "responses": { "200": { "description": "OK" } } } },
-    "/api/targets": { "get": { "summary": "List targets", "responses": { "200": { "description": "OK" } } } },
-    "/api/targets/{agentId}": { "patch": { "summary": "Admin: any target field. Supervisor: only monthlySalesTarget (a whole number of sales), and only for Agents sharing one of their campaigns. Update agent targets (Admin)", "responses": { "200": { "description": "OK" } } } },
+    "/api/targets": { "get": { "summary": "List targets. Admin: everyone. Supervisor: only agents who share one of their own campaigns. Agent: only their own.", "responses": { "200": { "description": "OK" } } } },
+    "/api/targets/{agentId}": { "patch": { "summary": "Admin: any target field, for any agent. Supervisor: only monthlySalesTarget (a whole number of sales), and only for agents sharing one of their campaigns.", "responses": { "200": { "description": "OK" } } } },
     "/api/callbacks": {
       "get": { "summary": "List callbacks", "responses": { "200": { "description": "OK" } } },
       "post": { "summary": "Schedule callback", "responses": { "201": { "description": "Created" } } }

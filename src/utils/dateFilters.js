@@ -60,3 +60,46 @@ export function filterByDateRange(records, isoField, preset, customFrom, customT
     return true;
   });
 }
+
+// Formats a Date as a local YYYY-MM-DD string. Never UTC -- toISOString() would shift the
+// date near midnight depending on the reader's timezone offset, which is exactly the bug
+// filterByDateOnlyRange below exists to avoid.
+function toLocalDateStr(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// Same job as filterByDateRange, but for a field that is already a plain 'YYYY-MM-DD' string
+// with no time of day (an attendance log's `date`, not a sale's `saleDateIso`). Running that
+// through filterByDateRange would parse it with `new Date('2026-09-24')`, which JS treats as
+// UTC midnight, and then compare it against `from`/`to` boundaries built in the *local*
+// timezone -- a record dated "today" can silently fail to match depending on how far the
+// reader's clock sits from UTC. Plain string comparison on YYYY-MM-DD sidesteps that
+// entirely: lexicographic order on that format is exactly chronological order.
+export function filterByDateOnlyRange(records, dateField, preset, customFrom, customTo) {
+  if (preset === 'All Time') return records;
+
+  let from = null;
+  let to = null;
+
+  if (preset === 'Custom') {
+    from = customFrom || null;
+    to = customTo || null;
+  } else {
+    const range = rangeForPreset(preset);
+    from = range.from ? toLocalDateStr(range.from) : null;
+    to = range.to ? toLocalDateStr(range.to) : null;
+  }
+
+  if (!from && !to) return records;
+
+  return records.filter(r => {
+    const value = r[dateField];
+    if (!value) return false;
+    if (from && value < from) return false;
+    if (to && value > to) return false;
+    return true;
+  });
+}

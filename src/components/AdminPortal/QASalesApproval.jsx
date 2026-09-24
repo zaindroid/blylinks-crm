@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
-import { Search, Filter, Check, X, CalendarRange, Eye } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Search, Filter, User, Check, X, CalendarRange, Eye } from 'lucide-react';
 import { DATE_RANGE_PRESETS, filterByDateRange } from '../../utils/dateFilters';
 import SaleDetailModal from '../Shared/SaleDetailModal';
 
 export default function QASalesApproval({ sales, currentUser, onApproveSale, onRejectSale }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Pending');
+  const [agentFilter, setAgentFilter] = useState('All');
   const [dateRangePreset, setDateRangePreset] = useState('All Time');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
@@ -14,12 +15,22 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
   const [qaNote, setQaNote] = useState('');
   const [detailSale, setDetailSale] = useState(null);
 
+  // Built from the sales actually visible here rather than a separate users list, so a
+  // Supervisor's dropdown only ever offers the agents whose sales they can already see --
+  // it inherits whatever scoping the sales themselves already have, nothing extra to keep in sync.
+  const agentOptions = useMemo(() => {
+    const byId = new Map();
+    for (const s of sales) if (!byId.has(s.agentId)) byId.set(s.agentId, s.agentName);
+    return [...byId.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [sales]);
+
   const filteredSales = filterByDateRange(sales, 'saleDateIso', dateRangePreset, customFrom, customTo).filter(s => {
     const matchesSearch = s.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           s.agentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           s.id.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'All' || s.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesAgent = agentFilter === 'All' || s.agentId === agentFilter;
+    return matchesSearch && matchesStatus && matchesAgent;
   });
 
   const handleOpenActionModal = (sale, action) => {
@@ -71,18 +82,28 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
           </div>
         </div>
 
-        <div className="filter-box margin-top">
-          <CalendarRange size={16} className="text-muted" />
-          <select className="form-select" value={dateRangePreset} onChange={(e) => setDateRangePreset(e.target.value)}>
-            {DATE_RANGE_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
-          </select>
-          {dateRangePreset === 'Custom' && (
-            <>
-              <input type="date" className="form-input" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
-              <span className="text-muted text-sm">to</span>
-              <input type="date" className="form-input" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
-            </>
-          )}
+        <div className="flex-between margin-top">
+          <div className="filter-box">
+            <User size={16} className="text-muted" />
+            <select className="form-select" aria-label="Filter by agent" value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)}>
+              <option value="All">All Agents</option>
+              {agentOptions.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+
+          <div className="filter-box">
+            <CalendarRange size={16} className="text-muted" />
+            <select className="form-select" value={dateRangePreset} onChange={(e) => setDateRangePreset(e.target.value)}>
+              {DATE_RANGE_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+            {dateRangePreset === 'Custom' && (
+              <>
+                <input type="date" className="form-input" aria-label="From date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+                <span className="text-muted text-sm">to</span>
+                <input type="date" className="form-input" aria-label="To date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+              </>
+            )}
+          </div>
         </div>
       </div>
 

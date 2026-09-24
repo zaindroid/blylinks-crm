@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { CalendarRange } from 'lucide-react';
+import { DATE_RANGE_PRESETS, filterByDateOnlyRange } from '../../utils/dateFilters';
 
 const STATUS_OPTIONS = ['Present', 'Tardy', 'Late', 'Clocked Out'];
 
@@ -11,11 +13,15 @@ function statusBadgeClass(status) {
 
 export default function AdminAttendance({ attendanceLogs, users, onUpdateAttendance }) {
   const [selectedAgentId, setSelectedAgentId] = useState('All');
+  const [dateRangePreset, setDateRangePreset] = useState('All Time');
+  const [customFrom, setCustomFrom] = useState('');
+  const [customTo, setCustomTo] = useState('');
   const agents = users.filter(u => u.role === 'Agent');
 
-  const filteredLogs = selectedAgentId === 'All' 
-    ? attendanceLogs 
+  const byAgent = selectedAgentId === 'All'
+    ? attendanceLogs
     : attendanceLogs.filter(a => a.agentId === selectedAgentId);
+  const filteredLogs = filterByDateOnlyRange(byAgent, 'date', dateRangePreset, customFrom, customTo);
 
   return (
     <div className="admin-attendance-container">
@@ -28,11 +34,25 @@ export default function AdminAttendance({ attendanceLogs, users, onUpdateAttenda
 
       <div className="card margin-bottom flex-between">
         <div className="filter-box">
-          <label className="form-label">Filter by Agent:</label>
-          <select className="form-select" value={selectedAgentId} onChange={(e) => setSelectedAgentId(e.target.value)}>
+          <label className="form-label" htmlFor="attendance-agent-filter">Filter by Agent:</label>
+          <select id="attendance-agent-filter" className="form-select" value={selectedAgentId} onChange={(e) => setSelectedAgentId(e.target.value)}>
             <option value="All">All Agents</option>
             {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
+        </div>
+
+        <div className="filter-box">
+          <CalendarRange size={16} className="text-muted" />
+          <select className="form-select" value={dateRangePreset} onChange={(e) => setDateRangePreset(e.target.value)}>
+            {DATE_RANGE_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
+          </select>
+          {dateRangePreset === 'Custom' && (
+            <>
+              <input type="date" className="form-input" aria-label="From date" value={customFrom} onChange={(e) => setCustomFrom(e.target.value)} />
+              <span className="text-muted text-sm">to</span>
+              <input type="date" className="form-input" aria-label="To date" value={customTo} onChange={(e) => setCustomTo(e.target.value)} />
+            </>
+          )}
         </div>
       </div>
 
@@ -50,7 +70,9 @@ export default function AdminAttendance({ attendanceLogs, users, onUpdateAttenda
             </tr>
           </thead>
           <tbody>
-            {filteredLogs.map(log => (
+            {filteredLogs.length === 0 ? (
+              <tr><td colSpan="7" style={{ textAlign: 'center', padding: '2rem' }}>No attendance records match the current filters.</td></tr>
+            ) : filteredLogs.map(log => (
               <tr key={log.id}>
                 <td className="font-mono">{log.date}</td>
                 <td className="font-bold">{log.agentName}</td>

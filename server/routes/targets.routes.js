@@ -2,7 +2,7 @@ const express = require('express');
 const pool = require('../db/pool');
 const asyncHandler = require('../utils/asyncHandler');
 const { requireRole } = require('../middleware/auth');
-const { findUserRowById, shareCampaignAccess } = require('../db/usersRepo');
+const { findUserRowById, shareCampaignAccess, getScopedAgentIds } = require('../db/usersRepo');
 
 const router = express.Router();
 
@@ -27,13 +27,18 @@ function reshape(row) {
 }
 
 router.get('/', asyncHandler(async (req, res) => {
-  // An Agent sees only their own target/achievement figures, not the whole
-  // team's individual performance numbers.
+  // An Agent sees only their own target/achievement figures. A Supervisor sees only the
+  // agents they share campaign access with -- the same scope PATCH below already enforces
+  // for setting a target, and the same scoping sales/DNC/campaigns already use. Admin sees
+  // everyone.
   let sql = SELECT_TARGETS;
   const params = [];
   if (req.user.role === 'Agent') {
     params.push(req.user.id);
     sql += ` WHERE t.agent_id = $1`;
+  } else if (req.user.role === 'Supervisor') {
+    params.push(await getScopedAgentIds(req.user.id));
+    sql += ` WHERE t.agent_id = ANY($1)`;
   }
   const { rows } = await pool.query(sql, params);
   res.json(rows.map(reshape));

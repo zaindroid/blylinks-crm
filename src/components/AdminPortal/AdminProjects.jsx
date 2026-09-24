@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
 import { Briefcase, PlusCircle, CheckCircle, Edit3, Trash2, Users, ShieldCheck, X } from 'lucide-react';
 
-export default function AdminProjects({ projects, users, onAddProject, onUpdateProject, onToggleProjectStatus }) {
+export default function AdminProjects({ currentUser, projects, users, onAddProject, onUpdateProject, onToggleProjectStatus }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
 
-  const agents = users.filter(u => u.role === 'Agent');
+  const isAdmin = currentUser?.role === 'Admin';
+  const ownCampaignIds = currentUser?.allowedCampaignIds || [];
+  // The campaigns list (`projects`) is already server-scoped to what a Supervisor can see, so it needs no
+  // extra filtering here -- only the agent-assignment picker does, to match what the PATCH the form submits
+  // will actually accept (an agent the Supervisor themself shares a campaign with).
+  const agents = users.filter(u => u.role === 'Agent' && (isAdmin || (u.allowedCampaignIds || []).some(id => ownCampaignIds.includes(id))));
 
   const [formData, setFormData] = useState({
     name: '',
@@ -75,11 +80,17 @@ export default function AdminProjects({ projects, users, onAddProject, onUpdateP
       <div className="page-header">
         <div>
           <h1 className="page-title">Campaign & Project Controls</h1>
-          <p className="page-subtitle">Configure outbound & inbound call center campaigns, set PKR targets and assign allowed agent access.</p>
+          <p className="page-subtitle">
+            {isAdmin
+              ? 'Configure outbound & inbound call center campaigns, set sales goals and assign allowed agent access.'
+              : 'Manage the campaigns you have access to: set sales goals and assign your agents.'}
+          </p>
         </div>
-        <button className="btn btn-primary" onClick={handleOpenCreate}>
-          <PlusCircle size={15} /> Create New Campaign
-        </button>
+        {isAdmin && (
+          <button className="btn btn-primary" onClick={handleOpenCreate}>
+            <PlusCircle size={15} /> Create New Campaign
+          </button>
+        )}
       </div>
 
       <div className="grid-2 margin-bottom">
@@ -114,12 +125,14 @@ export default function AdminProjects({ projects, users, onAddProject, onUpdateP
                 <button className="btn btn-secondary btn-sm" onClick={() => handleOpenEdit(p)}>
                   <Edit3 size={13} /> Edit / Assign Agents
                 </button>
-                <button 
-                  className={`btn btn-sm ${p.status === 'Active' ? 'btn-secondary' : 'btn-success'}`}
-                  onClick={() => onToggleProjectStatus(p.id)}
-                >
-                  {p.status === 'Active' ? 'Deactivate' : 'Activate'}
-                </button>
+                {isAdmin && (
+                  <button
+                    className={`btn btn-sm ${p.status === 'Active' ? 'btn-secondary' : 'btn-success'}`}
+                    onClick={() => onToggleProjectStatus(p.id)}
+                  >
+                    {p.status === 'Active' ? 'Deactivate' : 'Activate'}
+                  </button>
+                )}
               </div>
             </div>
           );

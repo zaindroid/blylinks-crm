@@ -3,16 +3,22 @@ import { Edit3, CheckCircle, X } from 'lucide-react';
 import { countMySales } from '../../utils/celebration';
 
 // Every active agent with their monthly sales target (a number of sales), how many they have logged this month
-// (Pakistan time, rejected sales excluded) and how far along they are. Admins can set anyone's target here;
-// Supervisors set their own agents' targets from Team & Access.
-export default function AdminTargets({ users = [], sales = [], targets = [], onUpdateSalesTarget }) {
+// (Pakistan time, rejected sales excluded) and how far along they are. An Admin can set anyone's target here.
+// A Supervisor sees and sets targets only for agents who share one of their own campaigns -- the server
+// enforces the same scope on both the read and the write, this just keeps the screen from ever offering a
+// row the save would then be refused for.
+export default function AdminTargets({ currentUser, users = [], sales = [], targets = [], onUpdateSalesTarget }) {
   const [editing, setEditing] = useState(null); // the agent being edited
   const [value, setValue] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
+  const isAdmin = currentUser?.role === 'Admin';
+  const ownCampaignIds = currentUser?.allowedCampaignIds || [];
+
   const rows = useMemo(() => users
     .filter(u => u.role === 'Agent' && u.status === 'Active')
+    .filter(u => isAdmin || (u.allowedCampaignIds || []).some(id => ownCampaignIds.includes(id)))
     .map(agent => {
       const target = targets.find(t => t.agentId === agent.id)?.monthlySalesTarget || 0;
       const done = countMySales(sales, agent.id).month;
@@ -23,7 +29,7 @@ export default function AdminTargets({ users = [], sales = [], targets = [], onU
         remaining: Math.max(target - done, 0),
         pct: target > 0 ? Math.min(Math.round((done / target) * 100), 100) : 0
       };
-    }), [users, sales, targets]);
+    }), [users, sales, targets, isAdmin, ownCampaignIds]);
 
   const openEdit = (row) => {
     setEditing(row.agent);

@@ -18,7 +18,8 @@ import {
   ChevronRight,
   MessageSquare,
   PhoneOff,
-  ShieldCheck
+  ShieldCheck,
+  Wallet
 } from 'lucide-react';
 
 const LOGO_SRC = '/blylinks-logo.png';
@@ -33,6 +34,7 @@ function getNavSections(role, pendingQaCount) {
       title: 'Workspace',
       items: [
         { id: 'my-sales', label: 'My Sales', icon: DollarSign },
+        { id: 'my-salary', label: 'My Salary', icon: Wallet },
         { id: 'callbacks', label: 'Callbacks', icon: PhoneCall },
         { id: 'dnc-check', label: 'DNC Check', icon: PhoneOff },
         { id: 'leads', label: 'My Leads', icon: Users },
@@ -48,6 +50,8 @@ function getNavSections(role, pendingQaCount) {
         { id: 'qa-approval', label: 'QA Review', icon: CheckSquare, badge: pendingQaCount },
         { id: 'leads', label: 'Lead CRM', icon: Users },
         { id: 'team-attendance', label: 'Team Attendance', icon: UserCheck },
+        { id: 'targets', label: 'Targets', icon: Target },
+        { id: 'projects', label: 'Campaigns', icon: Briefcase },
         { id: 'team', label: 'Team & Access', icon: UserPlus },
         { id: 'dnc-manage', label: 'DNC Lists', icon: PhoneOff },
         { id: 'message-groups', label: 'Message Groups', icon: MessageSquare }
@@ -60,8 +64,6 @@ function getNavSections(role, pendingQaCount) {
       title: 'Management',
       items: [
         { id: 'payroll', label: 'Payroll', icon: FileSpreadsheet },
-        { id: 'targets', label: 'Targets', icon: Target },
-        { id: 'projects', label: 'Campaigns', icon: Briefcase },
         { id: 'reports', label: 'Reports', icon: FileText },
         { id: 'access-control', label: 'IP Access', icon: ShieldCheck }
       ]

@@ -4,18 +4,21 @@ import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AdminTargets from './AdminTargets';
 
+const ADMIN = { id: 'admin1', name: 'Boss', role: 'Admin' };
+const SUPERVISOR = { id: 's1', name: 'Sana Sup', role: 'Supervisor', allowedCampaignIds: ['camp_1'] };
 const USERS = [
-  { id: 'a1', name: 'Ayesha Khan', role: 'Agent', status: 'Active' },
-  { id: 'a2', name: 'Bilal Raza', role: 'Agent', status: 'Active' },
-  { id: 'a3', name: 'Gone Person', role: 'Agent', status: 'Inactive' },
-  { id: 's1', name: 'Sana Sup', role: 'Supervisor', status: 'Active' }
+  { id: 'a1', name: 'Ayesha Khan', role: 'Agent', status: 'Active', allowedCampaignIds: ['camp_1'] },
+  { id: 'a2', name: 'Bilal Raza', role: 'Agent', status: 'Active', allowedCampaignIds: ['camp_1'] },
+  { id: 'a3', name: 'Gone Person', role: 'Agent', status: 'Inactive', allowedCampaignIds: ['camp_1'] },
+  { id: 'a4', name: 'Other Team', role: 'Agent', status: 'Active', allowedCampaignIds: ['camp_2'] },
+  { id: 's1', name: 'Sana Sup', role: 'Supervisor', status: 'Active', allowedCampaignIds: ['camp_1'] }
 ];
 const NOW = new Date().toISOString();
 const sale = (over) => ({ agentId: 'a1', status: 'Pending', saleDateIso: NOW, ...over });
 const rowOf = (name) => screen.getByText(name).closest('tr');
 
 const setup = (props = {}) => render(
-  <AdminTargets users={USERS} sales={[]} targets={[]} onUpdateSalesTarget={vi.fn().mockResolvedValue(undefined)} {...props} />
+  <AdminTargets currentUser={ADMIN} users={USERS} sales={[]} targets={[]} onUpdateSalesTarget={vi.fn().mockResolvedValue(undefined)} {...props} />
 );
 
 describe('AdminTargets (sales-count targets)', () => {
@@ -34,6 +37,11 @@ describe('AdminTargets (sales-count targets)', () => {
     expect(screen.getByText('Bilal Raza')).toBeInTheDocument();
     expect(screen.queryByText('Gone Person')).not.toBeInTheDocument();
     expect(screen.queryByText('Sana Sup')).not.toBeInTheDocument();
+  });
+
+  it('an Admin sees agents across every campaign', () => {
+    setup();
+    expect(screen.getByText('Other Team')).toBeInTheDocument();
   });
 
   it('shows target, sales this month, remaining and progress', () => {
@@ -81,5 +89,27 @@ describe('AdminTargets (sales-count targets)', () => {
   it('empty state when there are no agents', () => {
     setup({ users: [] });
     expect(screen.getByText(/no active agents yet/i)).toBeInTheDocument();
+  });
+});
+
+describe('AdminTargets Supervisor scoping', () => {
+  it('a Supervisor only sees agents who share one of their own campaigns', () => {
+    render(<AdminTargets currentUser={SUPERVISOR} users={USERS} sales={[]} targets={[]} onUpdateSalesTarget={vi.fn()} />);
+    expect(screen.getByText('Ayesha Khan')).toBeInTheDocument();
+    expect(screen.getByText('Bilal Raza')).toBeInTheDocument();
+    expect(screen.queryByText('Other Team')).not.toBeInTheDocument(); // different campaign
+  });
+
+  it('a Supervisor can set a target for their own scoped agent', async () => {
+    const onUpdateSalesTarget = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    render(<AdminTargets currentUser={SUPERVISOR} users={USERS} sales={[]} targets={[]} onUpdateSalesTarget={onUpdateSalesTarget} />);
+
+    await user.click(screen.getByLabelText('Set target for Ayesha Khan'));
+    const input = screen.getByLabelText(/number of sales per month/i);
+    await user.clear(input);
+    await user.type(input, '20');
+    await user.click(screen.getByRole('button', { name: /save target/i }));
+    expect(onUpdateSalesTarget).toHaveBeenCalledWith('a1', 20);
   });
 });
