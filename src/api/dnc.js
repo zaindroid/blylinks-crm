@@ -20,8 +20,14 @@ export function addDncEntry(campaignId, phone, note) {
   return apiFetch('/dnc', { method: 'POST', body: { campaignId, phone, note } });
 }
 
-export function bulkAddDnc(campaignId, numbers) {
-  return apiFetch('/dnc/bulk', { method: 'POST', body: { campaignId, numbers } });
+// `rows` is one chunk of an uploaded file: [{ phone, note, fields }]. The caller splits a large file into
+// chunks and sends them one after another, which is what removes any cap on the size of a file.
+export function bulkAddDnc(campaignId, rows) {
+  return apiFetch('/dnc/bulk', { method: 'POST', body: { campaignId, rows } });
+}
+
+export function updateDncEntry(id, phone, note) {
+  return apiFetch(`/dnc/${id}`, { method: 'PUT', body: { phone, note } });
 }
 
 export function deleteDncEntry(id) {

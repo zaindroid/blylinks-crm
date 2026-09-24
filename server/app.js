@@ -40,10 +40,11 @@ function buildApp() {
   app.set('trust proxy', 1);
 
   app.use(helmetMiddleware);
-  // A DNC file upload can be a few thousand numbers -- more than the default 100kb body limit. Only that one
-  // route gets the larger limit, and only for signed-in users (auth runs first), so an anonymous caller can
-  // never make the server buffer a big body.
-  app.use('/api/dnc/bulk', requireAuth, blockIfMustChangePassword, express.json({ limit: '1mb' }));
+  // A DNC upload arrives in chunks of a few thousand rows, which is more than the default 100kb body limit.
+  // Only that one route gets the larger limit, and only for signed-in users (auth runs first), so an
+  // anonymous caller can never make the server buffer a big body. The chunk size is what bounds this, not
+  // the size of the uploaded file -- a file is as large as it likes as long as each part fits here.
+  app.use('/api/dnc/bulk', requireAuth, blockIfMustChangePassword, express.json({ limit: '8mb' }));
   app.use(express.json());
   app.use(pinoHttp({ logger }));
 

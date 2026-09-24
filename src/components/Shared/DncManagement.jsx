@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { PhoneOff, Upload, Trash2, Plus, Search, FileText } from 'lucide-react';
-import { fetchDncSummary, fetchDncEntries, addDncEntry, bulkAddDnc, deleteDncEntry } from '../../api/dnc';
-import { extractPhoneNumbers, MAX_UPLOAD_BYTES, MAX_NUMBERS_PER_UPLOAD } from '../../utils/phoneNumbers';
+import { PhoneOff, Upload, Trash2, Plus, Pencil, Search, FileText, Check, X } from 'lucide-react';
+import { fetchDncSummary, fetchDncEntries, addDncEntry, bulkAddDnc, updateDncEntry, deleteDncEntry } from '../../api/dnc';
+import { parseDncFile, IMPORT_CHUNK_SIZE } from '../../utils/phoneNumbers';
 import DncCheck from './DncCheck';
 
 const PAGE_SIZE = 50;
+const MAX_FIELD_CHIPS = 4; // how many of a row's extra sheet columns to show before collapsing the rest
 
 // Admin / Supervisor: maintain each campaign's Do-Not-Call list -- add one number, or upload a file of them.
 export default function DncManagement() {
@@ -21,12 +22,14 @@ export default function DncManagement() {
   const [adding, setAdding] = useState(false);
   const [addMessage, setAddMessage] = useState(null); // { ok, text }
 
-  const [upload, setUpload] = useState(null); // { fileName, numbers, skipped } | { error }
+  const [upload, setUpload] = useState(null); // { fileName, rows, skipped, columns, phoneColumn } | { error }
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState(null); // { done, total } while chunks are uploading
   const [importResult, setImportResult] = useState(null);
   const fileInputRef = useRef(null);
 
-  const selected = campaigns.find(c => c.campaignId === selectedId);
+  const [editing, setEditing] = useState(null); // { id, phone, note } for the row being edited
+  const [editBusy, setEditBusy] = useState(false);
 
   const loadSummary = useCallback(async () => {
     try {
@@ -66,6 +69,7 @@ export default function DncManagement() {
     setAddMessage(null);
     setUpload(null);
     setImportResult(null);
+    setEditing(null);
     setError('');
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -81,7 +85,7 @@ export default function DncManagement() {
     setAdding(true);
     try {
       await addDncEntry(selectedId, phone.trim(), note.trim());
-      setAddMessage({ ok: true, text: `${phone.trim()} added to the ${selected?.campaignName} DNC list.` });
+      setAddMessage({ ok: true, text: `${phone.trim()} added.` });
       setPhone('');
       setNote('');
       await refreshAll();
@@ -92,41 +96,52 @@ export default function DncManagement() {
     }
   };
 
+  // A file of any size is accepted: it is read once, and the import below sends it in chunks, so there is no
+  // ceiling here to raise.
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
     setImportResult(null);
     setUpload(null);
     if (!file) return;
-    if (file.size > MAX_UPLOAD_BYTES) {
-      return setUpload({ error: `That file is too large (limit ${Math.round(MAX_UPLOAD_BYTES / 1024 / 1024)} MB). Split it into smaller files.` });
-    }
     try {
-      const text = await file.text();
-      const { numbers, skipped } = extractPhoneNumbers(text);
-      if (numbers.length === 0) return setUpload({ error: 'No phone numbers were found in that file. Use a .csv or .txt file with one number per line or column.' });
-      if (numbers.length > MAX_NUMBERS_PER_UPLOAD) {
-        return setUpload({ error: `That file has ${numbers.length.toLocaleString()} numbers; the limit is ${MAX_NUMBERS_PER_UPLOAD.toLocaleString()} per upload. Split it and upload in parts.` });
+      const { rows, skipped, columns, phoneColumn } = parseDncFile(await file.text());
+      if (rows.length === 0) {
+        return setUpload({ error: 'No phone numbers were found in that file. Use a .csv or .txt file with one number per line, or a sheet with a phone column.' });
       }
-      setUpload({ fileName: file.name, numbers, skipped });
+      setUpload({ fileName: file.name, rows, skipped, columns, phoneColumn });
     } catch {
       setUpload({ error: 'Could not read that file.' });
     }
   };
 
+  // One chunk at a time, so a large file makes progress instead of sitting there, and a failure part-way
+  // through leaves the parts that already landed as real rows -- the refresh below shows them for what they
+  // are rather than making the whole thing look like it did nothing.
   const handleImport = async () => {
-    if (!upload?.numbers) return;
+    if (!upload?.rows) return;
     setImporting(true);
     setError('');
+    setImportProgress({ done: 0, total: upload.rows.length });
+    const totals = { received: 0, added: 0, duplicates: 0, enriched: 0, invalid: 0 };
     try {
-      const result = await bulkAddDnc(selectedId, upload.numbers);
-      setImportResult({ ...result, skippedInFile: upload.skipped, fileName: upload.fileName });
+      for (let sent = 0; sent < upload.rows.length; sent += IMPORT_CHUNK_SIZE) {
+        const result = await bulkAddDnc(selectedId, upload.rows.slice(sent, sent + IMPORT_CHUNK_SIZE));
+        totals.received += result.received;
+        totals.added += result.added;
+        totals.duplicates += result.duplicates;
+        totals.enriched += result.enriched || 0;
+        totals.invalid += result.invalid;
+        setImportProgress({ done: Math.min(sent + IMPORT_CHUNK_SIZE, upload.rows.length), total: upload.rows.length });
+      }
+      setImportResult({ ...totals, skippedInFile: upload.skipped, fileName: upload.fileName });
       setUpload(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
-      await refreshAll();
     } catch (err) {
       setError(err.message || 'The import failed.');
     } finally {
       setImporting(false);
+      setImportProgress(null);
+      await refreshAll();
     }
   };
 
@@ -137,6 +152,23 @@ export default function DncManagement() {
       await refreshAll();
     } catch (err) {
       setError(err.message || 'Could not remove that number.');
+    }
+  };
+
+  // Editing a listed number: the server refuses a change that would put a number on the list twice, so the
+  // message a rejected edit produces is worth showing as-is rather than flattening it into "could not save".
+  const saveEdit = async (entry) => {
+    if (!editing) return;
+    setEditBusy(true);
+    setError('');
+    try {
+      await updateDncEntry(entry.id, editing.phone.trim(), editing.note.trim());
+      setEditing(null);
+      await refreshAll();
+    } catch (err) {
+      setError(err.message || 'Could not save that change.');
+    } finally {
+      setEditBusy(false);
     }
   };
 
@@ -175,7 +207,7 @@ export default function DncManagement() {
 
           <div className="grid-2 margin-bottom">
             <form className="card" onSubmit={handleAdd}>
-              <div className="card-header"><span className="card-title"><Plus size={16} className="text-accent" /> Add a number to {selected?.campaignName}</span></div>
+              <div className="card-header"><span className="card-title"><Plus size={16} className="text-accent" /> Add a number</span></div>
               <div className="form-group">
                 <label className="form-label" htmlFor="dnc-add-phone">Phone number</label>
                 <input id="dnc-add-phone" type="tel" className="form-input" value={phone} onChange={e => setPhone(e.target.value)} placeholder="e.g. 0300 1234567" autoComplete="off" />
@@ -189,65 +221,133 @@ export default function DncManagement() {
             </form>
 
             <div className="card">
-              <div className="card-header"><span className="card-title"><Upload size={16} className="text-accent" /> Upload a file to {selected?.campaignName}</span></div>
+              <div className="card-header"><span className="card-title"><Upload size={16} className="text-accent" /> Upload a file</span></div>
               <div className="form-group">
                 <label className="form-label" htmlFor="dnc-file">A .csv or .txt file of phone numbers</label>
                 <input id="dnc-file" ref={fileInputRef} type="file" accept=".csv,.txt,.tsv,text/csv,text/plain" className="form-input" onChange={handleFile} />
               </div>
               {upload?.error && <div className="error-alert" role="alert">{upload.error}</div>}
-              {upload?.numbers && (
+              {upload?.rows && (
                 <div className="dnc-preview" role="status">
                   <FileText size={16} />
                   <div>
-                    <div><strong>{upload.numbers.length.toLocaleString()}</strong> numbers found in {upload.fileName}</div>
-                    {upload.skipped > 0 && <div className="text-xs text-subtle">{upload.skipped} other entries looked like numbers but were not valid and will be ignored.</div>}
+                    <div><strong>{upload.rows.length.toLocaleString()}</strong> numbers found in {upload.fileName}</div>
+                    <div className="text-xs text-subtle">
+                      {upload.phoneColumn ? <>Column: <strong>{upload.phoneColumn}</strong></> : 'No headers detected'}
+                      {upload.columns.filter(c => c !== upload.phoneColumn).length > 0 &&
+                        ` · Also: ${upload.columns.filter(c => c !== upload.phoneColumn).join(', ')}`}
+                      {upload.skipped > 0 && ` · ${upload.skipped.toLocaleString()} skipped`}
+                    </div>
                   </div>
                   <button type="button" className="btn btn-primary" onClick={handleImport} disabled={importing}>
-                    {importing ? 'Importing…' : `Import to ${selected?.campaignName}`}
+                    {importing
+                      ? `Importing… ${importProgress ? Math.round((importProgress.done / importProgress.total) * 100) : 0}%`
+                      : 'Import'}
                   </button>
                 </div>
               )}
               {importResult && (
                 <div className="dnc-msg-ok" role="status">
-                  Imported {importResult.added.toLocaleString()} new {importResult.added === 1 ? 'number' : 'numbers'} from {importResult.fileName}.
-                  {importResult.duplicates > 0 && ` ${importResult.duplicates.toLocaleString()} were already on the list or repeated in the file.`}
-                  {importResult.invalid > 0 && ` ${importResult.invalid.toLocaleString()} were not valid phone numbers.`}
+                  {importResult.added.toLocaleString()} added
+                  {importResult.duplicates > 0 && `, ${importResult.duplicates.toLocaleString()} duplicate${importResult.duplicates === 1 ? '' : 's'}`}
+                  {importResult.enriched > 0 && `, ${importResult.enriched.toLocaleString()} updated`}
+                  {importResult.invalid > 0 && `, ${importResult.invalid.toLocaleString()} invalid`}
                 </div>
               )}
               <div className="text-xs text-subtle" style={{ marginTop: '0.6rem' }}>
-                One number per line, or a spreadsheet exported as CSV. Numbers can be written any way (0300…, +92 300…, (555) 123-4567). Other columns are ignored.
+                CSV, TXT, or one number per line. Any format or size.
               </div>
             </div>
           </div>
 
           <div className="card">
             <div className="card-header dnc-list-header">
-              <span className="card-title"><PhoneOff size={16} className="text-accent" /> {selected?.campaignName} DNC list ({total.toLocaleString()})</span>
+              <span className="card-title"><PhoneOff size={16} className="text-accent" /> DNC list ({total.toLocaleString()})</span>
               <div className="dnc-search">
                 <Search size={14} />
-                <input type="search" className="form-input" placeholder="Search numbers…" aria-label="Search this DNC list" value={query} onChange={e => setQuery(e.target.value)} />
+                <input type="search" className="form-input" placeholder="Number, name, note…" aria-label="Search this DNC list" value={query} onChange={e => setQuery(e.target.value)} />
               </div>
             </div>
 
             <div className="table-container">
               <table className="data-table">
-                <thead><tr><th>Phone number</th><th>Note</th><th>Added by</th><th>Added</th><th></th></tr></thead>
+                <thead><tr><th>Phone number</th><th>Details</th><th>Note</th><th>Added by</th><th>Added</th><th></th></tr></thead>
                 <tbody>
                   {entries.length === 0 ? (
-                    <tr><td colSpan="5" style={{ textAlign: 'center', padding: '1.5rem' }}>{loading ? 'Loading…' : query ? 'No numbers match that search.' : 'No numbers on this list yet.'}</td></tr>
-                  ) : entries.map(e => (
-                    <tr key={e.id}>
-                      <td className="font-mono font-bold">{e.phone}</td>
-                      <td className="text-sm text-muted">{e.note || '—'}</td>
-                      <td className="text-sm">{e.addedBy || '—'}</td>
-                      <td className="text-sm text-muted">{e.createdAt.slice(0, 10)}</td>
-                      <td>
-                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(e)} aria-label={`Remove ${e.phone} from the DNC list`}>
-                          <Trash2 size={13} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                    <tr><td colSpan="6" style={{ textAlign: 'center', padding: '1.5rem' }}>{loading ? 'Loading…' : query ? 'No numbers match that search.' : 'No numbers on this list yet.'}</td></tr>
+                  ) : entries.map(e => {
+                    const isEditing = editing?.id === e.id;
+                    const fieldEntries = Object.entries(e.fields || {});
+                    const shownFields = fieldEntries.slice(0, MAX_FIELD_CHIPS);
+                    return (
+                      <tr key={e.id}>
+                        <td className="font-mono font-bold">
+                          {isEditing
+                            ? <input
+                                type="tel"
+                                className="form-input dnc-cell-input"
+                                aria-label={`New number for ${e.phone}`}
+                                value={editing.phone}
+                                onChange={ev => setEditing(cur => ({ ...cur, phone: ev.target.value }))}
+                              />
+                            : e.phone}
+                        </td>
+                        <td className="text-sm text-muted">
+                          {fieldEntries.length === 0 ? '—' : (
+                            <span className="dnc-fields">
+                              {shownFields.map(([key, value]) => (
+                                <span key={key} className="dnc-field" title={`${key}: ${value}`}>
+                                  <span className="dnc-field-key">{key}</span>{value}
+                                </span>
+                              ))}
+                              {fieldEntries.length > shownFields.length && (
+                                <span className="dnc-field dnc-field-more" title={fieldEntries.slice(MAX_FIELD_CHIPS).map(([k, v]) => `${k}: ${v}`).join('\n')}>
+                                  +{fieldEntries.length - shownFields.length} more
+                                </span>
+                              )}
+                            </span>
+                          )}
+                        </td>
+                        <td className="text-sm text-muted">
+                          {isEditing
+                            ? <input
+                                type="text"
+                                className="form-input dnc-cell-input"
+                                aria-label={`New note for ${e.phone}`}
+                                maxLength={200}
+                                value={editing.note}
+                                onChange={ev => setEditing(cur => ({ ...cur, note: ev.target.value }))}
+                              />
+                            : (e.note || '—')}
+                        </td>
+                        <td className="text-sm">{e.addedBy || '—'}</td>
+                        <td className="text-sm text-muted">{e.createdAt.slice(0, 10)}</td>
+                        <td>
+                          <div className="dnc-row-actions">
+                            {isEditing ? (
+                              <>
+                                <button className="btn btn-primary btn-sm" onClick={() => saveEdit(e)} disabled={editBusy} aria-label={`Save changes to ${e.phone}`}>
+                                  <Check size={13} />
+                                </button>
+                                <button className="btn btn-secondary btn-sm" onClick={() => setEditing(null)} disabled={editBusy} aria-label={`Cancel changes to ${e.phone}`}>
+                                  <X size={13} />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button className="btn btn-secondary btn-sm" onClick={() => { setError(''); setEditing({ id: e.id, phone: e.phone, note: e.note || '' }); }} aria-label={`Edit ${e.phone}`}>
+                                  <Pencil size={13} />
+                                </button>
+                                <button className="btn btn-danger btn-sm" onClick={() => handleDelete(e)} aria-label={`Remove ${e.phone} from the DNC list`}>
+                                  <Trash2 size={13} />
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -274,6 +374,12 @@ export default function DncManagement() {
         .dnc-list-header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
         .dnc-search { display: flex; align-items: center; gap: 0.4rem; color: var(--text-subtle); }
         .dnc-search .form-input { width: 210px; }
+        .dnc-row-actions { display: flex; gap: 0.35rem; }
+        .dnc-cell-input { min-width: 150px; padding: 0.3rem 0.5rem; font-size: 0.82rem; }
+        .dnc-fields { display: inline-flex; flex-wrap: wrap; gap: 0.3rem; }
+        .dnc-field { display: inline-flex; align-items: baseline; gap: 0.3rem; max-width: 210px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: 9999px; padding: 0.1rem 0.5rem; font-size: 0.72rem; }
+        .dnc-field-key { color: var(--text-subtle); font-weight: 700; text-transform: capitalize; }
+        .dnc-field-more { color: var(--text-subtle); font-style: italic; }
       `}</style>
     </div>
   );

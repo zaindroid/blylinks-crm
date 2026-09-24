@@ -5,6 +5,10 @@ const auth = (token) => ({ Authorization: `Bearer ${token}` });
 const check = (token, campaignId, phone) => request(app).post('/api/dnc/check').set(auth(token)).send({ campaignId, phone });
 const add = (token, campaignId, phone, note) => request(app).post('/api/dnc').set(auth(token)).send({ campaignId, phone, note });
 const bulk = (token, campaignId, numbers) => request(app).post('/api/dnc/bulk').set(auth(token)).send({ campaignId, numbers });
+const list = (token, campaignId, q) => request(app)
+  .get(`/api/dnc?campaignId=${campaignId}${q ? `&q=${encodeURIComponent(q)}` : ''}`).set(auth(token));
+const importRows = (token, campaignId, rows) => request(app).post('/api/dnc/bulk').set(auth(token)).send({ campaignId, rows });
+const edit = (token, id, phone, note) => request(app).put(`/api/dnc/${id}`).set(auth(token)).send({ phone, note });
 
 async function createSupervisor(admin, campaignIds) {
   const user = await insertUser({ role: 'Supervisor' });
@@ -260,5 +264,200 @@ describe('DNC bulk upload', () => {
     const { admin, campA } = await world();
     const res = await bulk(admin.token, campA, ['x', 'y', '12']);
     expect(res.body).toMatchObject({ added: 0, invalid: 3 });
+  });
+});
+
+// A DNC list is only worth anything if it is exactly one row per number, per campaign. A duplicated row is a
+// number nobody notices is listed twice; a missing one is a number that gets dialled.
+describe('the DNC master list never holds the same number twice', () => {
+  it('re-uploading the same numbers adds no second row, however they are written', async () => {
+    const { admin, campA } = await world();
+    const first = await importRows(admin.token, campA, [{ phone: '0300 1234567' }, { phone: '0300 7654321' }]);
+    expect(first.status).toBe(201);
+    expect(first.body).toMatchObject({ received: 2, added: 2, duplicates: 0, invalid: 0 });
+
+    const again = await importRows(admin.token, campA, [{ phone: '+92 300 1234567' }, { phone: '0092-300-7654321' }]);
+    expect(again.body).toMatchObject({ received: 2, added: 0, duplicates: 2 });
+
+    expect((await list(admin.token, campA)).body.total).toBe(2);
+    const summary = await request(app).get('/api/dnc/summary').set(auth(admin.token));
+    expect(summary.body.find(s => s.campaignId === campA).count).toBe(2);
+  });
+
+  it('the same number repeated inside one file lands once', async () => {
+    const { admin, campA } = await world();
+    const res = await importRows(admin.token, campA, [
+      { phone: '03001111111' }, { phone: '0300 1111111' }, { phone: '+92 300 1111111' }
+    ]);
+    expect(res.body).toMatchObject({ received: 3, added: 1, duplicates: 2 });
+    expect((await list(admin.token, campA)).body.total).toBe(1);
+  });
+
+  it('looks like one row per number after many overlapping "weekly" uploads', async () => {
+    const { admin, campA } = await world();
+    const weeks = [
+      ['0300 1111111', '0300 2222222', '0300 3333333'],
+      ['+92 300 2222222', '0300 4444444', '0300 3333333'],
+      ['0092-300-1111111', '0300 5555555', '0300 2222222']
+    ];
+    const addedPerWeek = [];
+    for (const week of weeks) {
+      const res = await importRows(admin.token, campA, week.map(phone => ({ phone })));
+      addedPerWeek.push(res.body.added);
+    }
+    expect(addedPerWeek).toEqual([3, 1, 1]); // five distinct numbers, uploaded nine times
+
+    const page = await list(admin.token, campA);
+    expect(page.body.total).toBe(5);
+    // Every row is its own number -- judged the same way a lookup judges it.
+    const keys = page.body.entries.map(e => e.phone.replace(/\D/g, '').slice(-10));
+    expect(new Set(keys).size).toBe(5);
+  });
+
+  it('a manager cannot add a number that is already listed, in any format', async () => {
+    const { admin, campA } = await world();
+    await add(admin.token, campA, '0321-5550100');
+    for (const variant of ['+92 321 5550100', '03215550100', '(321) 555 0100']) {
+      expect((await add(admin.token, campA, variant)).status).toBe(409);
+    }
+    expect((await list(admin.token, campA)).body.total).toBe(1);
+  });
+
+  it('a later upload fills in details the list did not have, without creating a second row', async () => {
+    const { admin, campA } = await world();
+    await importRows(admin.token, campA, [{ phone: '0300 1234567' }]);
+
+    const second = await importRows(admin.token, campA, [
+      { phone: '0300 1234567', fields: { name: 'Ali', city: 'Lahore' } }
+    ]);
+    expect(second.body).toMatchObject({ added: 0, duplicates: 1, enriched: 1 });
+
+    const page = await list(admin.token, campA);
+    expect(page.body.total).toBe(1);
+    expect(page.body.entries[0].fields).toMatchObject({ name: 'Ali', city: 'Lahore' });
+
+    // Re-importing the identical row changes nothing, and is not called an enrichment.
+    const third = await importRows(admin.token, campA, [
+      { phone: '0300 1234567', fields: { name: 'Ali', city: 'Lahore' } }
+    ]);
+    expect(third.body).toMatchObject({ added: 0, duplicates: 1, enriched: 0 });
+    expect((await list(admin.token, campA)).body.total).toBe(1);
+  });
+
+  it('reports numbers it could not use instead of importing them', async () => {
+    const { admin, campA } = await world();
+    const res = await importRows(admin.token, campA, [
+      { phone: '03001111111' }, { phone: 'abc' }, { phone: '12345' }, { phone: '0000000' }
+    ]);
+    expect(res.body).toMatchObject({ received: 4, added: 1, duplicates: 0, invalid: 3 });
+    expect(res.body.invalidSamples).toEqual(['abc', '12345', '0000000']);
+  });
+
+  it('trims the extra sheet columns to something the list can render', async () => {
+    const { admin, campA } = await world();
+    const manyColumns = {};
+    for (let i = 0; i < 40; i++) manyColumns[`col${i}`] = 'x'.repeat(500);
+
+    const res = await importRows(admin.token, campA, [
+      { phone: '03001111111', note: 'n'.repeat(500), fields: manyColumns }
+    ]);
+    expect(res.status).toBe(201);
+
+    const entry = (await list(admin.token, campA)).body.entries[0];
+    expect(Object.keys(entry.fields)).toHaveLength(20);
+    expect(Object.values(entry.fields).every(value => value.length === 200)).toBe(true);
+    expect(entry.note).toHaveLength(200);
+  });
+
+  it('a key that would poison an object is not stored', async () => {
+    const { admin, campA } = await world();
+    const body = `{"campaignId":${JSON.stringify(campA)},"rows":[{"phone":"03001111111","fields":{"__proto__":"boom","name":"Ali"}}]}`;
+    const res = await request(app).post('/api/dnc/bulk')
+      .set(auth(admin.token)).set('Content-Type', 'application/json').send(body);
+    expect(res.status).toBe(201);
+
+    const entry = (await list(admin.token, campA)).body.entries[0];
+    expect(entry.fields).toEqual({ name: 'Ali' });
+  });
+});
+
+describe('DNC list search', () => {
+  it('finds a number however the search is typed, and however it was stored', async () => {
+    const { admin, campA } = await world();
+    await importRows(admin.token, campA, [{ phone: '(555) 123-4567', fields: { name: 'Bob' } }]);
+
+    for (const typed of ['5551234567', '(555) 123-4567', '+1 555 123 4567', '0092-555-1234567', '1234567']) {
+      const res = await list(admin.token, campA, typed);
+      expect(res.body.total).toBe(1);
+      expect(res.body.entries[0].phone).toBe('(555) 123-4567');
+    }
+  });
+
+  it('searches the other columns the sheet came with, not just the number', async () => {
+    const { admin, campA } = await world();
+    await importRows(admin.token, campA, [
+      { phone: '0300 1234567', note: 'called twice', fields: { name: 'Ali Khan', city: 'Lahore' } },
+      { phone: '0300 7654321', fields: { name: 'Sara Ahmed', city: 'Austin' } }
+    ]);
+
+    const byName = await list(admin.token, campA, 'sara');
+    expect(byName.body.total).toBe(1);
+    expect(byName.body.entries[0].phone).toBe('0300 7654321');
+    expect(byName.body.entries[0].fields).toMatchObject({ name: 'Sara Ahmed', city: 'Austin' });
+
+    expect((await list(admin.token, campA, 'lahore')).body.entries.map(e => e.phone)).toEqual(['0300 1234567']);
+    expect((await list(admin.token, campA, 'called twice')).body.entries.map(e => e.phone)).toEqual(['0300 1234567']);
+    expect((await list(admin.token, campA, 'nobody')).body.total).toBe(0);
+  });
+
+  it('treats LIKE wildcards in a search as literal characters', async () => {
+    const { admin, campA } = await world();
+    await importRows(admin.token, campA, [{ phone: '0300 1234567' }, { phone: '0300 7654321' }]);
+    expect((await list(admin.token, campA, '%')).body.total).toBe(0);
+    expect((await list(admin.token, campA, '_')).body.total).toBe(0);
+  });
+});
+
+describe('editing a DNC entry', () => {
+  it('changes the number and the note, and the lookup follows', async () => {
+    const { admin, campA } = await world();
+    const entry = await add(admin.token, campA, '03001111111');
+
+    const renamed = await edit(admin.token, entry.body.id, '0300-3333333', 'wrong number');
+    expect(renamed.status).toBe(200);
+    expect(renamed.body).toMatchObject({ phone: '0300-3333333', note: 'wrong number' });
+
+    expect((await check(admin.token, campA, '03001111111')).body.found).toBe(false);
+    expect((await check(admin.token, campA, '03003333333')).body.found).toBe(true);
+    expect((await list(admin.token, campA)).body.total).toBe(1);
+  });
+
+  it('refuses an edit that would put the same number on the list twice', async () => {
+    const { admin, campA, campB } = await world();
+    const entry = await add(admin.token, campA, '03001111111');
+    await add(admin.token, campA, '03002222222');
+
+    expect((await edit(admin.token, entry.body.id, '03002222222')).status).toBe(409);
+    expect((await edit(admin.token, entry.body.id, '+92 300 222 2222')).status).toBe(409); // same number, written differently
+
+    expect((await list(admin.token, campA)).body.total).toBe(2);
+    expect((await check(admin.token, campA, '03001111111')).body.found).toBe(true); // unchanged
+
+    // A different campaign's list is a different list, so there the same number is fine.
+    await add(admin.token, campB, '03004444444');
+    expect((await edit(admin.token, entry.body.id, '03004444444')).status).toBe(200);
+  });
+
+  it('rejects an invalid number, an unknown entry, and anyone without rights to the campaign', async () => {
+    const { admin, campA, campB, agentA } = await world();
+    const entry = await add(admin.token, campA, '03001111111');
+    const supervisor = await createSupervisor(admin, [campA]);
+    const other = await add(admin.token, campB, '03005555555');
+
+    expect((await edit(admin.token, entry.body.id, 'not a number')).status).toBe(400);
+    expect((await edit(admin.token, 'dnc_does_not_exist', '03001111111')).status).toBe(404);
+    expect((await edit(agentA.token, entry.body.id, '03006666666')).status).toBe(403);
+    expect((await edit(supervisor.token, other.body.id, '03007777777')).status).toBe(403);
+    expect((await check(admin.token, campB, '03005555555')).body.found).toBe(true);
   });
 });

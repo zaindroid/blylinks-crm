@@ -11,9 +11,11 @@ const SUMMARY = [
   { campaignId: 'camp_a', campaignName: 'Campaign A', count: 2 },
   { campaignId: 'camp_b', campaignName: 'Campaign B', count: 0 }
 ];
-const ENTRY = { id: 'dnc_1', campaignId: 'camp_a', phone: '0300-1112222', note: 'asked to be removed', addedBy: 'Boss', createdAt: '2026-03-01T10:00:00.000Z' };
+const ENTRY = { id: 'dnc_1', campaignId: 'camp_a', phone: '0300-1112222', note: 'asked to be removed', fields: {}, addedBy: 'Boss', createdAt: '2026-03-01T10:00:00.000Z' };
 
 const fileOf = (text, name = 'numbers.csv') => new File([text], name, { type: 'text/csv' });
+// What the uploader sends for one parsed row of a sheet.
+const row = (phone, note = '', fields = {}) => ({ phone, note, fields });
 
 describe('DncManagement', () => {
   beforeEach(() => {
@@ -21,7 +23,8 @@ describe('DncManagement', () => {
     dncApi.fetchDncSummary.mockResolvedValue(SUMMARY);
     dncApi.fetchDncEntries.mockResolvedValue({ total: 1, entries: [ENTRY] });
     dncApi.addDncEntry.mockResolvedValue(ENTRY);
-    dncApi.bulkAddDnc.mockResolvedValue({ received: 3, added: 2, duplicates: 1, invalid: 0, invalidSamples: [] });
+    dncApi.bulkAddDnc.mockResolvedValue({ received: 3, added: 2, duplicates: 1, enriched: 0, invalid: 0, invalidSamples: [] });
+    dncApi.updateDncEntry.mockResolvedValue(ENTRY);
     dncApi.deleteDncEntry.mockResolvedValue({ status: 'deleted' });
   });
 
@@ -54,7 +57,7 @@ describe('DncManagement', () => {
     await user.click(screen.getByRole('button', { name: /add to dnc/i }));
 
     await waitFor(() => expect(dncApi.addDncEntry).toHaveBeenCalledWith('camp_a', '0321 5550100', 'complaint'));
-    expect(await screen.findByText(/added to the campaign a dnc list/i)).toBeInTheDocument();
+    expect(await screen.findByText(/0321 5550100 added/i)).toBeInTheDocument();
   });
 
   it('shows the server\'s reason when a number cannot be added (e.g. already listed)', async () => {
@@ -76,10 +79,29 @@ describe('DncManagement', () => {
     expect(await screen.findByText(/numbers found in numbers\.csv/i)).toBeInTheDocument();
     expect(dncApi.bulkAddDnc).not.toHaveBeenCalled(); // nothing is imported until confirmed
 
-    await user.click(screen.getByRole('button', { name: /import to campaign a/i }));
-    await waitFor(() => expect(dncApi.bulkAddDnc).toHaveBeenCalledWith('camp_a', ['03001111111', '03002222222', '03003333333']));
-    expect(await screen.findByText(/imported 2 new numbers/i)).toBeInTheDocument();
-    expect(screen.getByText(/1 were already on the list/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^import$/i }));
+    await waitFor(() => expect(dncApi.bulkAddDnc).toHaveBeenCalledWith('camp_a', [
+      row('03001111111'), row('03002222222'), row('03003333333')
+    ]));
+    expect(await screen.findByText(/2 added/i)).toBeInTheDocument();
+    expect(screen.getByText(/1 duplicate/i)).toBeInTheDocument();
+  });
+
+  it('keeps the other columns of the sheet and says which column the numbers came from', async () => {
+    const user = userEvent.setup();
+    render(<DncManagement />);
+    await screen.findByText('0300-1112222');
+
+    const csv = 'name,phone,city,remarks\nAli,0300 1234567,Lahore,called twice\n';
+    fireEvent.change(screen.getByLabelText(/a \.csv or \.txt file/i), { target: { files: [fileOf(csv)] } });
+
+    expect(await screen.findByText(/column:/i)).toBeInTheDocument();
+    expect(screen.getByText(/also: name, city, remarks/i)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^import$/i }));
+    await waitFor(() => expect(dncApi.bulkAddDnc).toHaveBeenCalledWith('camp_a', [
+      row('0300 1234567', 'called twice', { name: 'Ali', city: 'Lahore' })
+    ]));
   });
 
   it('refuses a file with no phone numbers, and does not offer to import it', async () => {
@@ -87,16 +109,76 @@ describe('DncManagement', () => {
     await screen.findByText('0300-1112222');
     fireEvent.change(screen.getByLabelText(/a \.csv or \.txt file/i), { target: { files: [fileOf('name,city\nAli,Lahore\n', 'people.csv')] } });
     expect(await screen.findByRole('alert')).toHaveTextContent(/no phone numbers were found/i);
-    expect(screen.queryByRole('button', { name: /^import to/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^import$/i })).not.toBeInTheDocument();
   });
 
-  it('refuses a file larger than the limit before reading it', async () => {
+  it('accepts a file far larger than the old 2 MB cap instead of refusing it', async () => {
     render(<DncManagement />);
     await screen.findByText('0300-1112222');
-    const huge = new File(['x'], 'huge.csv', { type: 'text/csv' });
-    Object.defineProperty(huge, 'size', { value: 5 * 1024 * 1024 });
+
+    const huge = fileOf('phone\n03001111111\n03002222222\n', 'huge.csv');
+    Object.defineProperty(huge, 'size', { value: 40 * 1024 * 1024 });
     fireEvent.change(screen.getByLabelText(/a \.csv or \.txt file/i), { target: { files: [huge] } });
-    expect(await screen.findByRole('alert')).toHaveTextContent(/too large/i);
+
+    expect(await screen.findByText(/numbers found in huge\.csv/i)).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('sends a big file in chunks, so no single request decides how large a file can be', async () => {
+    const user = userEvent.setup();
+    render(<DncManagement />);
+    await screen.findByText('0300-1112222');
+
+    // One more than the chunk size, so exactly two requests are expected: a full one and a remainder.
+    const lines = ['phone'];
+    for (let i = 0; i < 5001; i++) lines.push(`0300${String(i).padStart(7, '0')}`);
+    fireEvent.change(screen.getByLabelText(/a \.csv or \.txt file/i), { target: { files: [fileOf(lines.join('\n'))] } });
+
+    // The count sits in its own <strong>, so it is queried on its own rather than as part of the sentence.
+    await screen.findByText(/numbers found in numbers\.csv/i);
+    expect(screen.getByText('5,001')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^import$/i }));
+
+    await waitFor(() => expect(dncApi.bulkAddDnc).toHaveBeenCalledTimes(2));
+    expect(dncApi.bulkAddDnc.mock.calls[0][1]).toHaveLength(5000);
+    expect(dncApi.bulkAddDnc.mock.calls[1][1]).toHaveLength(1);
+  });
+
+  it('shows the other columns a number was imported with', async () => {
+    dncApi.fetchDncEntries.mockResolvedValue({
+      total: 1,
+      entries: [{ ...ENTRY, fields: { name: 'Ali Khan', city: 'Lahore' } }]
+    });
+    render(<DncManagement />);
+    expect(await screen.findByText('Ali Khan')).toBeInTheDocument();
+    expect(screen.getByText('Lahore')).toBeInTheDocument();
+  });
+
+  it('edits a listed number and its note', async () => {
+    const user = userEvent.setup();
+    render(<DncManagement />);
+    await screen.findByText('0300-1112222');
+
+    await user.click(screen.getByLabelText(/edit 0300-1112222/i));
+    const numberField = screen.getByLabelText(/new number for 0300-1112222/i);
+    await user.clear(numberField);
+    await user.type(numberField, '0321 5550100');
+    await user.clear(screen.getByLabelText(/new note for 0300-1112222/i));
+    await user.type(screen.getByLabelText(/new note for 0300-1112222/i), 'wrong number');
+    await user.click(screen.getByLabelText(/save changes to 0300-1112222/i));
+
+    await waitFor(() => expect(dncApi.updateDncEntry).toHaveBeenCalledWith('dnc_1', '0321 5550100', 'wrong number'));
+  });
+
+  it('shows why an edit was refused (it would list the number twice)', async () => {
+    dncApi.updateDncEntry.mockRejectedValue(new Error("That number is already on this campaign's DNC list."));
+    const user = userEvent.setup();
+    render(<DncManagement />);
+    await screen.findByText('0300-1112222');
+
+    await user.click(screen.getByLabelText(/edit 0300-1112222/i));
+    await user.click(screen.getByLabelText(/save changes to 0300-1112222/i));
+    expect(await screen.findByRole('alert')).toHaveTextContent(/already on this campaign/i);
   });
 
   it('removes a number from the list', async () => {
