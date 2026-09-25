@@ -33,3 +33,13 @@ export function updateDncEntry(id, phone, note) {
 export function deleteDncEntry(id) {
   return apiFetch(`/dnc/${id}`, { method: 'DELETE' });
 }
+
+// Deletes a chosen set of entries (a checked selection) in one request. Returns { deleted }.
+export function bulkDeleteDnc(campaignId, ids) {
+  return apiFetch('/dnc/bulk-delete', { method: 'POST', body: { campaignId, ids } });
+}
+
+// Clears an entire campaign's list. Returns { deleted, campaignId }.
+export function clearDncList(campaignId) {
+  return apiFetch(`/dnc?campaignId=${encodeURIComponent(campaignId)}`, { method: 'DELETE' });
+}

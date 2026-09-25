@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { PhoneOff, Upload, Trash2, Plus, Pencil, Search, FileText, Check, X } from 'lucide-react';
-import { fetchDncSummary, fetchDncEntries, addDncEntry, bulkAddDnc, updateDncEntry, deleteDncEntry } from '../../api/dnc';
+import { PhoneOff, Upload, Plus, Pencil, Search, FileText, Check, X, Trash2, AlertTriangle } from 'lucide-react';
+import { fetchDncSummary, fetchDncEntries, addDncEntry, bulkAddDnc, updateDncEntry, deleteDncEntry, bulkDeleteDnc, clearDncList } from '../../api/dnc';
 import { parseDncFile, IMPORT_CHUNK_SIZE } from '../../utils/phoneNumbers';
 import DncCheck from './DncCheck';
 
@@ -30,6 +30,12 @@ export default function DncManagement() {
 
   const [editing, setEditing] = useState(null); // { id, phone, note } for the row being edited
   const [editBusy, setEditBusy] = useState(false);
+
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
+  const [confirmingClearAll, setConfirmingClearAll] = useState(false);
+  const [clearingAll, setClearingAll] = useState(false);
+  const [clearAllError, setClearAllError] = useState('');
 
   const loadSummary = useCallback(async () => {
     try {
@@ -71,6 +77,7 @@ export default function DncManagement() {
     setImportResult(null);
     setEditing(null);
     setError('');
+    setSelectedIds(new Set());
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -172,7 +179,60 @@ export default function DncManagement() {
     }
   };
 
+  const toggleSelect = (id) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const allVisibleSelected = entries.length > 0 && entries.every(e => selectedIds.has(e.id));
+  const toggleSelectAllVisible = () => {
+    setSelectedIds(prev => {
+      if (allVisibleSelected) {
+        const next = new Set(prev);
+        entries.forEach(e => next.delete(e.id));
+        return next;
+      }
+      return new Set([...prev, ...entries.map(e => e.id)]);
+    });
+  };
+
+  // Deletes just the checked rows -- for removing a handful of specific numbers spotted while
+  // browsing or searching. To wipe the whole list regardless of how many that is, use Remove All.
+  const handleBulkDelete = async () => {
+    if (selectedIds.size === 0) return;
+    setError('');
+    setBulkDeleting(true);
+    try {
+      await bulkDeleteDnc(selectedId, [...selectedIds]);
+      setSelectedIds(new Set());
+      await refreshAll();
+    } catch (err) {
+      setError(err.message || 'Could not delete the selected numbers.');
+    } finally {
+      setBulkDeleting(false);
+    }
+  };
+
+  const handleClearAll = async () => {
+    setClearAllError('');
+    setClearingAll(true);
+    try {
+      await clearDncList(selectedId);
+      setConfirmingClearAll(false);
+      setSelectedIds(new Set());
+      await refreshAll();
+    } catch (err) {
+      setClearAllError(err.message || 'Could not clear the list.');
+    } finally {
+      setClearingAll(false);
+    }
+  };
+
   const checkableProjects = campaigns.map(c => ({ id: c.campaignId, name: c.campaignName }));
+  const selectedCampaignName = campaigns.find(c => c.campaignId === selectedId)?.campaignName || 'this campaign';
 
   return (
     <div className="dnc-manage">
@@ -263,24 +323,68 @@ export default function DncManagement() {
           <div className="card">
             <div className="card-header dnc-list-header">
               <span className="card-title"><PhoneOff size={16} className="text-accent" /> DNC list ({total.toLocaleString()})</span>
-              <div className="dnc-search">
-                <Search size={14} />
-                <input type="search" className="form-input" placeholder="Number, name, note…" aria-label="Search this DNC list" value={query} onChange={e => setQuery(e.target.value)} />
+              <div className="dnc-header-actions">
+                <div className="dnc-search">
+                  <Search size={14} />
+                  <input type="search" className="form-input" placeholder="Number, name, note…" aria-label="Search this DNC list" value={query} onChange={e => setQuery(e.target.value)} />
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  onClick={() => { setClearAllError(''); setConfirmingClearAll(true); }}
+                  disabled={total === 0}
+                  title="Delete every number on this campaign's list"
+                >
+                  <Trash2 size={13} /> Remove All
+                </button>
               </div>
             </div>
 
+            {selectedIds.size > 0 && (
+              <div className="dnc-bulk-bar" role="status">
+                <span>{selectedIds.size.toLocaleString()} selected</span>
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setSelectedIds(new Set())} disabled={bulkDeleting}>
+                  Clear selection
+                </button>
+                <button type="button" className="btn btn-danger btn-sm" onClick={handleBulkDelete} disabled={bulkDeleting}>
+                  <Trash2 size={13} /> {bulkDeleting ? 'Deleting…' : `Delete Selected (${selectedIds.size})`}
+                </button>
+              </div>
+            )}
+
             <div className="table-container">
               <table className="data-table">
-                <thead><tr><th>Phone number</th><th>Details</th><th>Note</th><th>Added by</th><th>Added</th><th></th></tr></thead>
+                <thead>
+                  <tr>
+                    <th style={{ width: '2.2rem' }}>
+                      <input
+                        type="checkbox"
+                        aria-label="Select all loaded numbers"
+                        checked={allVisibleSelected}
+                        onChange={toggleSelectAllVisible}
+                        disabled={entries.length === 0}
+                      />
+                    </th>
+                    <th>Phone number</th><th>Details</th><th>Note</th><th>Added by</th><th>Added</th><th></th>
+                  </tr>
+                </thead>
                 <tbody>
                   {entries.length === 0 ? (
-                    <tr><td colSpan="6" style={{ textAlign: 'center', padding: '1.5rem' }}>{loading ? 'Loading…' : query ? 'No numbers match that search.' : 'No numbers on this list yet.'}</td></tr>
+                    <tr><td colSpan="7" style={{ textAlign: 'center', padding: '1.5rem' }}>{loading ? 'Loading…' : query ? 'No numbers match that search.' : 'No numbers on this list yet.'}</td></tr>
                   ) : entries.map(e => {
                     const isEditing = editing?.id === e.id;
                     const fieldEntries = Object.entries(e.fields || {});
                     const shownFields = fieldEntries.slice(0, MAX_FIELD_CHIPS);
                     return (
                       <tr key={e.id}>
+                        <td>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select ${e.phone}`}
+                            checked={selectedIds.has(e.id)}
+                            onChange={() => toggleSelect(e.id)}
+                          />
+                        </td>
                         <td className="font-mono font-bold">
                           {isEditing
                             ? <input
@@ -363,6 +467,33 @@ export default function DncManagement() {
         </>
       )}
 
+      {confirmingClearAll && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '440px' }} role="dialog" aria-label="Remove all numbers">
+            <div className="modal-header">
+              <span className="modal-title">Remove all numbers?</span>
+              <button className="icon-btn" onClick={() => setConfirmingClearAll(false)} aria-label="Close" disabled={clearingAll}><X size={18} /></button>
+            </div>
+            <div className="modal-body">
+              <div className="dnc-clear-warning">
+                <AlertTriangle size={18} />
+                <p>
+                  This deletes all <strong>{total.toLocaleString()}</strong> number{total === 1 ? '' : 's'} on the{' '}
+                  <strong>{selectedCampaignName}</strong> DNC list. Agents will no longer be warned about any of them. This cannot be undone.
+                </p>
+              </div>
+              {clearAllError && <div className="error-alert" role="alert">{clearAllError}</div>}
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={() => setConfirmingClearAll(false)} disabled={clearingAll}>Cancel</button>
+              <button type="button" className="btn btn-danger" onClick={handleClearAll} disabled={clearingAll}>
+                {clearingAll ? 'Removing…' : 'Remove All'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         .dnc-tabs { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 1rem; }
         .dnc-tab { border: 1px solid var(--border-color); background: var(--bg-card); color: var(--text-muted); font-weight: 600; font-size: 0.82rem; padding: 0.45rem 0.85rem; border-radius: 9999px; cursor: pointer; display: inline-flex; align-items: center; gap: 0.45rem; }
@@ -372,6 +503,12 @@ export default function DncManagement() {
         .dnc-preview { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; padding: 0.75rem; border: 1px dashed var(--border-color); border-radius: var(--radius-sm); background: var(--bg-primary); font-size: 0.85rem; }
         .dnc-preview .btn { margin-left: auto; }
         .dnc-list-header { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+        .dnc-header-actions { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+        .dnc-bulk-bar { display: flex; align-items: center; gap: 0.6rem; padding: 0.55rem 1rem; margin: 0 0 0.75rem; background: var(--accent-light); border: 1px solid var(--accent); border-radius: var(--radius-sm); font-size: 0.82rem; font-weight: 600; color: var(--accent); }
+        .dnc-bulk-bar .btn:first-of-type { margin-left: auto; }
+        .dnc-clear-warning { display: flex; gap: 0.6rem; align-items: flex-start; color: var(--status-error); }
+        .dnc-clear-warning p { color: var(--text-main); font-size: 0.88rem; line-height: 1.5; margin: 0; }
+        .dnc-clear-warning svg { flex-shrink: 0; margin-top: 0.15rem; }
         .dnc-search { display: flex; align-items: center; gap: 0.4rem; color: var(--text-subtle); }
         .dnc-search .form-input { width: 210px; }
         .dnc-row-actions { display: flex; gap: 0.35rem; }

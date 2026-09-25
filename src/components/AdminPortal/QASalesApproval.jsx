@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Search, Filter, User, Check, X, CalendarRange, Eye } from 'lucide-react';
+import { Search, Filter, User, Briefcase, Check, X, CalendarRange, Eye } from 'lucide-react';
 import { DATE_RANGE_PRESETS, filterByDateRange } from '../../utils/dateFilters';
 import SaleDetailModal from '../Shared/SaleDetailModal';
 
@@ -7,6 +7,7 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Pending');
   const [agentFilter, setAgentFilter] = useState('All');
+  const [campaignFilter, setCampaignFilter] = useState('All');
   const [dateRangePreset, setDateRangePreset] = useState('All Time');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
@@ -15,12 +16,18 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
   const [qaNote, setQaNote] = useState('');
   const [detailSale, setDetailSale] = useState(null);
 
-  // Built from the sales actually visible here rather than a separate users list, so a
-  // Supervisor's dropdown only ever offers the agents whose sales they can already see --
-  // it inherits whatever scoping the sales themselves already have, nothing extra to keep in sync.
+  // Built from the sales actually visible here rather than a separate users/projects list, so a
+  // Supervisor's dropdowns only ever offer the agents/campaigns they can already see -- they
+  // inherit whatever scoping the sales themselves already have, nothing extra to keep in sync.
   const agentOptions = useMemo(() => {
     const byId = new Map();
     for (const s of sales) if (!byId.has(s.agentId)) byId.set(s.agentId, s.agentName);
+    return [...byId.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [sales]);
+
+  const campaignOptions = useMemo(() => {
+    const byId = new Map();
+    for (const s of sales) if (!byId.has(s.campaignId)) byId.set(s.campaignId, s.projectName);
     return [...byId.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
   }, [sales]);
 
@@ -30,7 +37,8 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
                           s.id.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'All' || s.status === statusFilter;
     const matchesAgent = agentFilter === 'All' || s.agentId === agentFilter;
-    return matchesSearch && matchesStatus && matchesAgent;
+    const matchesCampaign = campaignFilter === 'All' || s.campaignId === campaignFilter;
+    return matchesSearch && matchesStatus && matchesAgent && matchesCampaign;
   });
 
   const handleOpenActionModal = (sale, action) => {
@@ -82,12 +90,20 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
           </div>
         </div>
 
-        <div className="flex-between margin-top">
+        <div className="qa-filter-row margin-top">
           <div className="filter-box">
             <User size={16} className="text-muted" />
             <select className="form-select" aria-label="Filter by agent" value={agentFilter} onChange={(e) => setAgentFilter(e.target.value)}>
               <option value="All">All Agents</option>
               {agentOptions.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </div>
+
+          <div className="filter-box">
+            <Briefcase size={16} className="text-muted" />
+            <select className="form-select" aria-label="Filter by campaign" value={campaignFilter} onChange={(e) => setCampaignFilter(e.target.value)}>
+              <option value="All">All Campaigns</option>
+              {campaignOptions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
 
@@ -217,6 +233,7 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
       )}
 
       <style>{`
+        .qa-filter-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; }
         .sale-summary-box {
           background: var(--bg-primary);
           border: 1px solid var(--border-color);

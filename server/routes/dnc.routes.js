@@ -320,4 +320,38 @@ router.delete('/:id', requireRole('Admin', 'Supervisor'), asyncHandler(async (re
   res.json({ status: 'deleted', id: entry.id });
 }));
 
+// Delete a chosen set of entries in one request (a checked selection from the list). Scoped to
+// campaignId on the query itself -- `id = ANY($2) AND campaign_id = $1` -- so an id that does not
+// actually belong to this campaign is simply not matched, never deleted, whatever a caller sends.
+router.post('/bulk-delete', requireRole('Admin', 'Supervisor'), asyncHandler(async (req, res) => {
+  const { campaignId, ids } = req.body;
+  const access = await campaignAccess(req.user, campaignId);
+  if (access.error) return res.status(access.status).json({ error: access.error });
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'ids must be a non-empty list' });
+  }
+  if (ids.length > MAX_NUMBERS_PER_REQUEST) {
+    return res.status(413).json({ error: `Too many ids in one request (limit ${MAX_NUMBERS_PER_REQUEST.toLocaleString()}).` });
+  }
+
+  const { rowCount } = await pool.query(
+    'DELETE FROM dnc_numbers WHERE campaign_id = $1 AND id = ANY($2)',
+    [campaignId, ids]
+  );
+  res.json({ status: 'deleted', deleted: rowCount });
+}));
+
+// Clear an entire campaign's list. The single most destructive thing this router can do, so it is
+// its own explicit action rather than a side effect of any other call -- the client is expected to
+// confirm with the person before ever sending this.
+router.delete('/', requireRole('Admin', 'Supervisor'), asyncHandler(async (req, res) => {
+  const { campaignId } = req.query;
+  const access = await campaignAccess(req.user, campaignId);
+  if (access.error) return res.status(access.status).json({ error: access.error });
+
+  const { rowCount } = await pool.query('DELETE FROM dnc_numbers WHERE campaign_id = $1', [campaignId]);
+  res.json({ status: 'deleted', deleted: rowCount, campaignId });
+}));
+
 module.exports = router;

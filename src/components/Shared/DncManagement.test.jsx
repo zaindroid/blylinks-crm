@@ -12,6 +12,7 @@ const SUMMARY = [
   { campaignId: 'camp_b', campaignName: 'Campaign B', count: 0 }
 ];
 const ENTRY = { id: 'dnc_1', campaignId: 'camp_a', phone: '0300-1112222', note: 'asked to be removed', fields: {}, addedBy: 'Boss', createdAt: '2026-03-01T10:00:00.000Z' };
+const ENTRY_2 = { id: 'dnc_2', campaignId: 'camp_a', phone: '0321-5550100', note: '', fields: {}, addedBy: 'Boss', createdAt: '2026-03-02T10:00:00.000Z' };
 
 const fileOf = (text, name = 'numbers.csv') => new File([text], name, { type: 'text/csv' });
 // What the uploader sends for one parsed row of a sheet.
@@ -26,6 +27,8 @@ describe('DncManagement', () => {
     dncApi.bulkAddDnc.mockResolvedValue({ received: 3, added: 2, duplicates: 1, enriched: 0, invalid: 0, invalidSamples: [] });
     dncApi.updateDncEntry.mockResolvedValue(ENTRY);
     dncApi.deleteDncEntry.mockResolvedValue({ status: 'deleted' });
+    dncApi.bulkDeleteDnc.mockResolvedValue({ status: 'deleted', deleted: 2 });
+    dncApi.clearDncList.mockResolvedValue({ status: 'deleted', deleted: 1, campaignId: 'camp_a' });
   });
 
   it('shows a tab per campaign with its count, and the numbers on the selected list', async () => {
@@ -212,5 +215,147 @@ describe('DncManagement', () => {
     dncApi.fetchDncSummary.mockRejectedValue(new Error('You do not have access'));
     render(<DncManagement />);
     expect(await screen.findByRole('alert')).toHaveTextContent(/you do not have access/i);
+  });
+
+  describe('batch selection and delete', () => {
+  beforeEach(() => {
+    dncApi.fetchDncEntries.mockResolvedValue({ total: 2, entries: [ENTRY, ENTRY_2] });
+  });
+
+  it('checking rows shows a bulk action bar with the count, and it disappears once cleared', async () => {
+    const user = userEvent.setup();
+    render(<DncManagement />);
+    await screen.findByText('0300-1112222');
+    expect(screen.queryByText(/selected/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('Select 0300-1112222'));
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('Select 0321-5550100'));
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /clear selection/i }));
+    expect(screen.queryByText(/selected/i)).not.toBeInTheDocument();
+  });
+
+  it('"select all" checks every loaded row, and unchecking it clears them', async () => {
+    const user = userEvent.setup();
+    render(<DncManagement />);
+    await screen.findByText('0300-1112222');
+
+    await user.click(screen.getByLabelText('Select all loaded numbers'));
+    expect(screen.getByLabelText('Select 0300-1112222')).toBeChecked();
+    expect(screen.getByLabelText('Select 0321-5550100')).toBeChecked();
+    expect(screen.getByText('2 selected')).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText('Select all loaded numbers'));
+    expect(screen.getByLabelText('Select 0300-1112222')).not.toBeChecked();
+    expect(screen.queryByText(/selected/i)).not.toBeInTheDocument();
+  });
+
+  it('deletes exactly the checked numbers for the selected campaign', async () => {
+    const user = userEvent.setup();
+    render(<DncManagement />);
+    await screen.findByText('0300-1112222');
+
+    await user.click(screen.getByLabelText('Select 0300-1112222'));
+    await user.click(screen.getByLabelText('Select 0321-5550100'));
+    await user.click(screen.getByRole('button', { name: /delete selected \(2\)/i }));
+
+    await waitFor(() => expect(dncApi.bulkDeleteDnc).toHaveBeenCalledWith('camp_a', ['dnc_1', 'dnc_2']));
+  });
+
+  it('clears the selection and refreshes the list after a successful batch delete', async () => {
+    dncApi.fetchDncEntries
+      .mockResolvedValueOnce({ total: 2, entries: [ENTRY, ENTRY_2] })
+      .mockResolvedValue({ total: 0, entries: [] });
+    const user = userEvent.setup();
+    render(<DncManagement />);
+    await screen.findByText('0300-1112222');
+
+    await user.click(screen.getByLabelText('Select 0300-1112222'));
+    await user.click(screen.getByRole('button', { name: /delete selected/i }));
+
+    await waitFor(() => expect(screen.queryByText(/selected/i)).not.toBeInTheDocument());
+    expect(await screen.findByText(/no numbers on this list yet/i)).toBeInTheDocument();
+  });
+
+  it('shows the server\'s reason when a batch delete fails', async () => {
+    dncApi.bulkDeleteDnc.mockRejectedValue(new Error('You do not have access to this campaign'));
+    const user = userEvent.setup();
+    render(<DncManagement />);
+    await screen.findByText('0300-1112222');
+
+    await user.click(screen.getByLabelText('Select 0300-1112222'));
+    await user.click(screen.getByRole('button', { name: /delete selected/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/you do not have access/i);
+  });
+
+  it('switching campaigns clears the selection', async () => {
+    const user = userEvent.setup();
+    render(<DncManagement />);
+    await screen.findByText('0300-1112222');
+    await user.click(screen.getByLabelText('Select 0300-1112222'));
+    expect(screen.getByText('1 selected')).toBeInTheDocument();
+
+    dncApi.fetchDncEntries.mockResolvedValue({ total: 0, entries: [] });
+    await user.click(screen.getByRole('tab', { name: /campaign b/i }));
+    expect(screen.queryByText(/selected/i)).not.toBeInTheDocument();
+  });
+});
+
+  describe('remove all', () => {
+  it('asks for confirmation before removing everything, and does nothing on cancel', async () => {
+    const user = userEvent.setup();
+    render(<DncManagement />);
+    await screen.findByText('0300-1112222');
+
+    await user.click(screen.getByRole('button', { name: /remove all/i }));
+    const dialog = screen.getByRole('dialog', { name: /remove all numbers/i });
+    expect(dialog).toHaveTextContent('1');
+    expect(dialog).toHaveTextContent('Campaign A');
+    expect(dncApi.clearDncList).not.toHaveBeenCalled();
+
+    await user.click(within(dialog).getByRole('button', { name: /cancel/i }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(dncApi.clearDncList).not.toHaveBeenCalled();
+  });
+
+  it('clears the whole campaign list on confirmation', async () => {
+    dncApi.fetchDncEntries
+      .mockResolvedValueOnce({ total: 1, entries: [ENTRY] })
+      .mockResolvedValue({ total: 0, entries: [] });
+    const user = userEvent.setup();
+    render(<DncManagement />);
+    await screen.findByText('0300-1112222');
+
+    await user.click(screen.getByRole('button', { name: /remove all/i }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: /^remove all$/i }));
+
+    await waitFor(() => expect(dncApi.clearDncList).toHaveBeenCalledWith('camp_a'));
+    expect(await screen.findByText(/no numbers on this list yet/i)).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('is disabled when the list is already empty', async () => {
+    dncApi.fetchDncEntries.mockResolvedValue({ total: 0, entries: [] });
+    render(<DncManagement />);
+    await screen.findByText(/no numbers on this list yet/i);
+    expect(screen.getByRole('button', { name: /remove all/i })).toBeDisabled();
+  });
+
+  it('shows the server\'s reason when clearing fails, and keeps the dialog open', async () => {
+    dncApi.clearDncList.mockRejectedValue(new Error('You do not have access to this campaign'));
+    const user = userEvent.setup();
+    render(<DncManagement />);
+    await screen.findByText('0300-1112222');
+
+    await user.click(screen.getByRole('button', { name: /remove all/i }));
+    await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: /^remove all$/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/you do not have access/i);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
   });
 });

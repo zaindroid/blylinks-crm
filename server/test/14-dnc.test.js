@@ -461,3 +461,120 @@ describe('editing a DNC entry', () => {
     expect((await check(admin.token, campB, '03005555555')).body.found).toBe(true);
   });
 });
+
+describe('bulk-delete a chosen set of entries', () => {
+  const bulkDelete = (token, campaignId, ids) => request(app).post('/api/dnc/bulk-delete').set(auth(token)).send({ campaignId, ids });
+
+  it('deletes exactly the entries given, in one request', async () => {
+    const { admin, campA } = await world();
+    const e1 = await add(admin.token, campA, '03001111111');
+    const e2 = await add(admin.token, campA, '03002222222');
+    const e3 = await add(admin.token, campA, '03003333333');
+
+    const res = await bulkDelete(admin.token, campA, [e1.body.id, e2.body.id]);
+    expect(res.status).toBe(200);
+    expect(res.body.deleted).toBe(2);
+
+    const remaining = await list(admin.token, campA);
+    expect(remaining.body.entries.map(e => e.id)).toEqual([e3.body.id]);
+  });
+
+  it('cannot be used to delete an entry from a different campaign, even by id', async () => {
+    const { admin, campA, campB } = await world();
+    const mine = await add(admin.token, campA, '03001111111');
+    const other = await add(admin.token, campB, '03002222222');
+
+    const res = await bulkDelete(admin.token, campA, [mine.body.id, other.body.id]);
+    expect(res.status).toBe(200);
+    expect(res.body.deleted).toBe(1); // only the one that actually belongs to campA
+
+    expect((await check(admin.token, campB, '03002222222')).body.found).toBe(true); // untouched
+  });
+
+  it('a Supervisor can only bulk-delete from a campaign they have access to', async () => {
+    const { admin, campA, campB } = await world();
+    const supervisor = await createSupervisor(admin, [campA]);
+    const entry = await add(admin.token, campB, '03001111111');
+
+    const res = await bulkDelete(supervisor.token, campB, [entry.body.id]);
+    expect(res.status).toBe(403);
+    expect((await check(admin.token, campB, '03001111111')).body.found).toBe(true);
+  });
+
+  it('rejects an empty or missing id list, and an oversized one', async () => {
+    const { admin, campA } = await world();
+    expect((await bulkDelete(admin.token, campA, [])).status).toBe(400);
+    expect((await bulkDelete(admin.token, campA, undefined)).status).toBe(400);
+    const tooMany = Array.from({ length: 20001 }, (_, i) => `dnc_${i}`);
+    expect((await bulkDelete(admin.token, campA, tooMany)).status).toBe(413);
+  });
+
+  it('unknown ids simply delete nothing, rather than erroring', async () => {
+    const { admin, campA } = await world();
+    const res = await bulkDelete(admin.token, campA, ['dnc_does_not_exist']);
+    expect(res.status).toBe(200);
+    expect(res.body.deleted).toBe(0);
+  });
+
+  it('an Agent cannot bulk-delete', async () => {
+    const { admin, campA, agentA } = await world();
+    const entry = await add(admin.token, campA, '03001111111');
+    expect((await bulkDelete(agentA.token, campA, [entry.body.id])).status).toBe(403);
+  });
+});
+
+describe('clear an entire campaign list', () => {
+  const clearAll = (token, campaignId) => request(app).delete(`/api/dnc?campaignId=${campaignId}`).set(auth(token));
+
+  it('removes every entry for that campaign', async () => {
+    const { admin, campA } = await world();
+    await add(admin.token, campA, '03001111111');
+    await add(admin.token, campA, '03002222222');
+    await add(admin.token, campA, '03003333333');
+
+    const res = await clearAll(admin.token, campA);
+    expect(res.status).toBe(200);
+    expect(res.body.deleted).toBe(3);
+    expect((await list(admin.token, campA)).body.total).toBe(0);
+  });
+
+  it('never touches another campaign\'s list', async () => {
+    const { admin, campA, campB } = await world();
+    await add(admin.token, campA, '03001111111');
+    await add(admin.token, campB, '03002222222');
+
+    await clearAll(admin.token, campA);
+    expect((await list(admin.token, campB)).body.total).toBe(1);
+    expect((await check(admin.token, campB, '03002222222')).body.found).toBe(true);
+  });
+
+  it('a Supervisor can only clear a campaign they have access to', async () => {
+    const { admin, campA, campB } = await world();
+    const supervisor = await createSupervisor(admin, [campA]);
+    await add(admin.token, campB, '03001111111');
+
+    expect((await clearAll(supervisor.token, campB)).status).toBe(403);
+    expect((await check(admin.token, campB, '03001111111')).body.found).toBe(true);
+
+    expect((await clearAll(supervisor.token, campA)).status).toBe(200);
+  });
+
+  it('clearing an already-empty list is a harmless no-op', async () => {
+    const { admin, campA } = await world();
+    const res = await clearAll(admin.token, campA);
+    expect(res.status).toBe(200);
+    expect(res.body.deleted).toBe(0);
+  });
+
+  it('an Agent cannot clear a list', async () => {
+    const { admin, campA, agentA } = await world();
+    await add(admin.token, campA, '03001111111');
+    expect((await clearAll(agentA.token, campA)).status).toBe(403);
+  });
+
+  it('requires a campaignId and 404s for an unknown one', async () => {
+    const { admin } = await world();
+    expect((await request(app).delete('/api/dnc').set(auth(admin.token))).status).toBe(400);
+    expect((await clearAll(admin.token, 'camp_does_not_exist')).status).toBe(404);
+  });
+});
