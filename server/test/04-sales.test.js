@@ -1,5 +1,5 @@
 const request = require('supertest');
-const { app, createAdmin, createCampaign, createAgentViaApi } = require('./helpers');
+const { app, uid, createAdmin, createCampaign, createAgentViaApi, insertUser, loginToken } = require('./helpers');
 
 const FULL_ORDER = {
   customerName: 'Johnathan Sterling',
@@ -130,5 +130,44 @@ describe('sale approve/reject RBAC', () => {
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('Rejected');
     expect(res.body.qaNotes).toBe('no good');
+  });
+
+  it('an Admin can flip an already-Approved sale to Rejected, and back again', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+    const sale = await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 100 });
+
+    const approved = await request(app).patch(`/api/sales/${sale.body.id}/approve`).set('Authorization', `Bearer ${admin.token}`).send({ qaNote: 'good' });
+    expect(approved.body.status).toBe('Approved');
+
+    const flippedToRejected = await request(app).patch(`/api/sales/${sale.body.id}/reject`).set('Authorization', `Bearer ${admin.token}`).send({ qaNote: 'actually no' });
+    expect(flippedToRejected.status).toBe(200);
+    expect(flippedToRejected.body.status).toBe('Rejected');
+
+    const flippedBackToApproved = await request(app).patch(`/api/sales/${sale.body.id}/approve`).set('Authorization', `Bearer ${admin.token}`).send({ qaNote: 'reconsidered' });
+    expect(flippedBackToApproved.status).toBe(200);
+    expect(flippedBackToApproved.body.status).toBe('Approved');
+  });
+
+  it('a Supervisor cannot change the status of a sale that is already Approved or Rejected', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const supUser = await insertUser({ role: 'Supervisor', username: uid('sale_flip_sup') });
+    await request(app).patch(`/api/users/${supUser.id}/campaigns`).set('Authorization', `Bearer ${admin.token}`).send({ campaignIds: [campaignId] });
+    const supToken = await loginToken(supUser.username, supUser.password);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+    const sale = await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 100 });
+
+    const approved = await request(app).patch(`/api/sales/${sale.body.id}/approve`).set('Authorization', `Bearer ${supToken}`).send({});
+    expect(approved.body.status).toBe('Approved');
+
+    const flipAttempt = await request(app).patch(`/api/sales/${sale.body.id}/reject`).set('Authorization', `Bearer ${supToken}`).send({});
+    expect(flipAttempt.status).toBe(403);
+
+    const stillApproved = await request(app).get(`/api/sales?campaignId=${campaignId}`).set('Authorization', `Bearer ${admin.token}`);
+    expect(stillApproved.body.find(s => s.id === sale.body.id).status).toBe('Approved');
   });
 });

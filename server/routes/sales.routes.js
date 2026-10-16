@@ -118,12 +118,14 @@ async function verifierName(userId) {
   return rows[0] ? `${rows[0].name} (${rows[0].role})` : '';
 }
 
-// A Supervisor may only review sales in campaigns they themselves have
-// access to -- without this, any Supervisor could approve/reject a sale
-// belonging to a totally unrelated campaign they have no assignment to.
+// A Supervisor may only review sales in campaigns they themselves have access to --
+// without this, any Supervisor could approve/reject a sale belonging to a totally
+// unrelated campaign they have no assignment to. A Supervisor is also limited to the
+// initial decision: once a sale has already been Approved or Rejected, only an Admin
+// may flip it to a different status (Admin has no such restriction, by role or status).
 async function assertReviewScope(req, res, saleId) {
-  if (req.user.role !== 'Supervisor') return true;
-  const { rows } = await pool.query('SELECT campaign_id FROM sales WHERE id = $1', [saleId]);
+  if (req.user.role === 'Admin') return true;
+  const { rows } = await pool.query('SELECT campaign_id, status FROM sales WHERE id = $1', [saleId]);
   if (!rows[0]) {
     res.status(404).json({ error: 'Sale not found' });
     return false;
@@ -131,6 +133,10 @@ async function assertReviewScope(req, res, saleId) {
   const allowedCampaignIds = await getAllowedCampaignIds(req.user.id);
   if (!allowedCampaignIds.includes(rows[0].campaign_id)) {
     res.status(403).json({ error: 'This sale is outside your campaign access' });
+    return false;
+  }
+  if (rows[0].status !== 'Pending') {
+    res.status(403).json({ error: 'Only an Admin can change the status of an already-reviewed sale' });
     return false;
   }
   return true;

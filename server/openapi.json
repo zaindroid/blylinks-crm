@@ -25,8 +25,8 @@
       "get": { "summary": "List sales (optional ?campaignId filter). Each sale includes full utility-order fields: address/apt/city/state/zipCode, phone2, supplierName, electric/gas utility+account+rate fields, confirmationNumber, and a raw saleDateIso for client-side date-range filtering.", "responses": { "200": { "description": "OK" } } },
       "post": { "summary": "Submit a sale/order (Agent). Required: campaignId, customerName, phone, amount. Accepts the full order-detail field set plus an optional saleDate.", "responses": { "201": { "description": "Created" } } }
     },
-    "/api/sales/{id}/approve": { "patch": { "summary": "Approve sale (Admin/Supervisor)", "responses": { "200": { "description": "OK" } } } },
-    "/api/sales/{id}/reject": { "patch": { "summary": "Reject sale (Admin/Supervisor)", "responses": { "200": { "description": "OK" } } } },
+    "/api/sales/{id}/approve": { "patch": { "summary": "Approve sale. Admin: any sale, any current status (can flip an already-Rejected sale back to Approved). Supervisor: own-campaign-scope only, and only while the sale is still Pending.", "responses": { "200": { "description": "OK" } } } },
+    "/api/sales/{id}/reject": { "patch": { "summary": "Reject sale. Admin: any sale, any current status (can flip an already-Approved sale back to Rejected). Supervisor: own-campaign-scope only, and only while the sale is still Pending.", "responses": { "200": { "description": "OK" } } } },
     "/api/attendance": { "get": { "summary": "List attendance logs", "responses": { "200": { "description": "OK" } } } },
     "/api/attendance/clock-in": { "post": { "summary": "Clock in", "responses": { "201": { "description": "Created" } } } },
     "/api/attendance/clock-out": { "post": { "summary": "Clock out", "responses": { "200": { "description": "OK" } } } },

@@ -133,3 +133,44 @@ describe('QASalesApproval campaign filter', () => {
     expect(screen.getByText('S2')).toBeInTheDocument();
   });
 });
+
+describe('QASalesApproval Admin can change the status of an already-reviewed sale', () => {
+  const SUPERVISOR = { id: 'sup1', name: 'Sup', role: 'Supervisor' };
+
+  const showAll = async (user) => {
+    await user.selectOptions(screen.getByDisplayValue(/pending review only/i), 'All');
+  };
+
+  it('Admin sees a "Change to Rejected" button on an Approved sale, which calls onRejectSale after confirming', async () => {
+    const user = userEvent.setup();
+    const onRejectSale = vi.fn();
+    setup([sale({ id: 'S1', status: 'Approved', verifiedBy: 'Boss (Admin)' })], { onRejectSale });
+    await showAll(user);
+
+    expect(screen.getByText(/reviewed by boss/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /change to rejected/i }));
+    await user.click(screen.getByRole('button', { name: /confirm rejection/i }));
+    expect(onRejectSale).toHaveBeenCalledWith('S1', expect.any(String));
+  });
+
+  it('Admin sees a "Change to Approved" button on a Rejected sale, which calls onApproveSale after confirming', async () => {
+    const user = userEvent.setup();
+    const onApproveSale = vi.fn();
+    setup([sale({ id: 'S1', status: 'Rejected', verifiedBy: 'Boss (Admin)' })], { onApproveSale });
+    await showAll(user);
+
+    await user.click(screen.getByRole('button', { name: /change to approved/i }));
+    await user.click(screen.getByRole('button', { name: /confirm approval/i }));
+    expect(onApproveSale).toHaveBeenCalledWith('S1', expect.any(String));
+  });
+
+  it('a Supervisor gets no status-change control on an already-reviewed sale, only the "Reviewed by" label', async () => {
+    const user = userEvent.setup();
+    setup([sale({ id: 'S1', status: 'Approved', verifiedBy: 'Boss (Admin)' })], { currentUser: SUPERVISOR });
+    await showAll(user);
+
+    expect(screen.getByText(/reviewed by boss/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /change to rejected/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /change to approved/i })).not.toBeInTheDocument();
+  });
+});

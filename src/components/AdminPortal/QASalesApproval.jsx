@@ -175,6 +175,16 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
                           <X size={14} /> Reject
                         </button>
                       </div>
+                    ) : currentUser.role === 'Admin' ? (
+                      <div className="btn-group-sm">
+                        <span className="text-subtle text-xs">Reviewed by {sale.verifiedBy || 'Admin'}</span>
+                        <button
+                          className={`btn btn-sm ${sale.status === 'Approved' ? 'btn-danger' : 'btn-success'}`}
+                          onClick={() => handleOpenActionModal(sale, sale.status === 'Approved' ? 'Reject' : 'Approve')}
+                        >
+                          {sale.status === 'Approved' ? <><X size={14} /> Change to Rejected</> : <><Check size={14} /> Change to Approved</>}
+                        </button>
+                      </div>
                     ) : (
                       <span className="text-subtle text-xs">Reviewed by {sale.verifiedBy || 'Admin'}</span>
                     )}
