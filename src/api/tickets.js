@@ -11,3 +11,7 @@ export function addTicket(ticket) {
 export function resolveTicket(id) {
   return apiFetch(`/tickets/${id}/resolve`, { method: 'PATCH' });
 }
+
+export function reopenTicket(id) {
+  return apiFetch(`/tickets/${id}/reopen`, { method: 'PATCH' });
+}

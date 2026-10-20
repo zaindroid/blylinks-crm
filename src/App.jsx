@@ -47,7 +47,7 @@ import { fetchPayroll, togglePaymentStatus, generatePayroll, updatePayrollAdjust
 import { fetchMessages, sendMessage } from './api/messages';
 import { fetchMessageGroups, createMessageGroup, updateMessageGroupMembers, deleteMessageGroup } from './api/messageGroups';
 import { fetchKbArticles, createKbArticle, updateKbArticle, deleteKbArticle } from './api/kb';
-import { fetchTickets, addTicket, resolveTicket } from './api/tickets';
+import { fetchTickets, addTicket, resolveTicket, reopenTicket } from './api/tickets';
 
 export default function App() {
   const [authChecking, setAuthChecking] = useState(true);
@@ -621,6 +621,11 @@ export default function App() {
     setTickets(await fetchTickets());
   };
 
+  const handleReopenTicket = async (tickId) => {
+    await reopenTicket(tickId);
+    setTickets(await fetchTickets());
+  };
+
   const pendingQaCount = sales.filter(s => s.status === 'Pending').length;
 
   // The splash screen (below, in the outer return) covers the full viewport
@@ -891,6 +896,7 @@ export default function App() {
               tickets={tickets}
               onAddTicket={handleAddTicket}
               onResolveTicket={handleResolveTicket}
+              onReopenTicket={handleReopenTicket}
             />
           )}
         </main>

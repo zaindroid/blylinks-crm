@@ -63,4 +63,14 @@ router.patch('/:id/resolve', requireRole('Admin', 'Supervisor'), asyncHandler(as
   res.json(reshape(rows[0]));
 }));
 
+// Reopening a already-Resolved ticket is Admin-only -- Supervisor can resolve (above) but,
+// same as sales review, can't reverse a decision once it's made.
+router.patch('/:id/reopen', requireRole('Admin'), asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  await pool.query(`UPDATE tickets SET status = 'Open' WHERE id = $1`, [id]);
+  const { rows } = await pool.query(`${SELECT_TICKET} WHERE t.id = $1`, [id]);
+  if (!rows[0]) return res.status(404).json({ error: 'Ticket not found' });
+  res.json(reshape(rows[0]));
+}));
+
 module.exports = router;

@@ -218,6 +218,37 @@ describe('GET /api/tickets is scoped per role', () => {
   });
 });
 
+describe('Ticket resolve/reopen RBAC', () => {
+  it('an Admin can reopen an already-Resolved ticket back to Open', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+    const ticket = await request(app).post('/api/tickets').set('Authorization', `Bearer ${agent.token}`).send({ subject: 'Issue' });
+
+    const resolved = await request(app).patch(`/api/tickets/${ticket.body.id}/resolve`).set('Authorization', `Bearer ${admin.token}`).send({});
+    expect(resolved.body.status).toBe('Resolved');
+
+    const reopened = await request(app).patch(`/api/tickets/${ticket.body.id}/reopen`).set('Authorization', `Bearer ${admin.token}`).send({});
+    expect(reopened.status).toBe(200);
+    expect(reopened.body.status).toBe('Open');
+  });
+
+  it('a Supervisor cannot reopen a Resolved ticket (Admin only)', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const supUser = await insertUser({ role: 'Supervisor', username: uid('ticket_reopen_sup') });
+    const supToken = await loginToken(supUser.username, supUser.password);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+    const ticket = await request(app).post('/api/tickets').set('Authorization', `Bearer ${agent.token}`).send({ subject: 'Issue' });
+
+    const resolved = await request(app).patch(`/api/tickets/${ticket.body.id}/resolve`).set('Authorization', `Bearer ${supToken}`).send({});
+    expect(resolved.body.status).toBe('Resolved');
+
+    const reopenAttempt = await request(app).patch(`/api/tickets/${ticket.body.id}/reopen`).set('Authorization', `Bearer ${supToken}`).send({});
+    expect(reopenAttempt.status).toBe(403);
+  });
+});
+
 describe('GET /api/campaigns is scoped per role', () => {
   it('an Agent only sees campaigns they are assigned to', async () => {
     const admin = await createAdmin();

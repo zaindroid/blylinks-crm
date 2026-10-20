@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { LifeBuoy, PlusCircle, CheckCircle, Clock, AlertTriangle, X } from 'lucide-react';
+import { LifeBuoy, PlusCircle, CheckCircle, RotateCcw, Clock, AlertTriangle, X } from 'lucide-react';
 
-export default function SupportTickets({ currentUser, tickets, onAddTicket, onResolveTicket }) {
+export default function SupportTickets({ currentUser, tickets, onAddTicket, onResolveTicket, onReopenTicket }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [formData, setFormData] = useState({ subject: '', category: 'Payroll & Incentives', priority: 'Medium', description: '' });
 
@@ -69,6 +69,11 @@ export default function SupportTickets({ currentUser, tickets, onAddTicket, onRe
                   {currentUser.role === 'Admin' && t.status !== 'Resolved' && (
                     <button className="btn btn-success btn-sm" onClick={() => onResolveTicket(t.id)}>
                       <CheckCircle size={14} /> Resolve Ticket
+                    </button>
+                  )}
+                  {currentUser.role === 'Admin' && t.status === 'Resolved' && (
+                    <button className="btn btn-secondary btn-sm" onClick={() => onReopenTicket(t.id)}>
+                      <RotateCcw size={14} /> Reopen Ticket
                     </button>
                   )}
                 </td>
