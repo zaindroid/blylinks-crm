@@ -1,9 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Search, Filter, User, Briefcase, Check, X, CalendarRange, Eye } from 'lucide-react';
+import { Search, Filter, User, Briefcase, Check, X, CalendarRange, Eye, Pencil } from 'lucide-react';
 import { DATE_RANGE_PRESETS, filterByDateRange } from '../../utils/dateFilters';
 import SaleDetailModal from '../Shared/SaleDetailModal';
+import SaleEditModal from '../Shared/SaleEditModal';
 
-export default function QASalesApproval({ sales, currentUser, onApproveSale, onRejectSale }) {
+export default function QASalesApproval({ sales, currentUser, onApproveSale, onRejectSale, onUpdateSale }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Pending');
   const [agentFilter, setAgentFilter] = useState('All');
@@ -15,6 +16,7 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
   const [qaActionType, setQaActionType] = useState('Approve'); // Approve or Reject
   const [qaNote, setQaNote] = useState('');
   const [detailSale, setDetailSale] = useState(null);
+  const [editSale, setEditSale] = useState(null);
 
   // Built from the sales actually visible here rather than a separate users/projects list, so a
   // Supervisor's dropdowns only ever offer the agents/campaigns they can already see -- they
@@ -55,6 +57,11 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
       onRejectSale(activeSaleModal.id, qaNote);
     }
     setActiveSaleModal(null);
+  };
+
+  const handleSaveEdit = (saleId, patch) => {
+    onUpdateSale(saleId, patch);
+    setEditSale(null);
   };
 
   return (
@@ -161,9 +168,16 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
                     </span>
                   </td>
                   <td>
-                    <button className="btn btn-secondary btn-sm" onClick={() => setDetailSale(sale)}>
-                      <Eye size={13} /> View
-                    </button>
+                    <div className="btn-group-sm">
+                      <button className="btn btn-secondary btn-sm" onClick={() => setDetailSale(sale)}>
+                        <Eye size={13} /> View
+                      </button>
+                      {currentUser.role === 'Admin' && (
+                        <button className="btn btn-secondary btn-sm" onClick={() => setEditSale(sale)}>
+                          <Pencil size={13} /> Edit
+                        </button>
+                      )}
+                    </div>
                   </td>
                   <td>
                     {sale.status === 'Pending' ? (
@@ -198,6 +212,10 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
 
       {detailSale && (
         <SaleDetailModal sale={detailSale} onClose={() => setDetailSale(null)} />
+      )}
+
+      {editSale && (
+        <SaleEditModal sale={editSale} onSave={handleSaveEdit} onClose={() => setEditSale(null)} />
       )}
 
       {/* Review Confirmation Modal */}

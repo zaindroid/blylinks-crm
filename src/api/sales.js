@@ -15,3 +15,7 @@ export function approveSale(id, qaNote) {
 export function rejectSale(id, qaNote) {
   return apiFetch(`/sales/${id}/reject`, { method: 'PATCH', body: { qaNote } });
 }
+
+export function updateSale(id, patch) {
+  return apiFetch(`/sales/${id}`, { method: 'PATCH', body: patch });
+}

@@ -170,4 +170,59 @@ router.patch('/:id/reject', requireRole('Admin', 'Supervisor'), asyncHandler(asy
   res.json(reshapeSale(rows[0]));
 }));
 
+const SALE_STATUSES = ['Pending', 'Approved', 'Rejected'];
+
+// A plain correction tool, not a workflow action: lets an Admin fix a mistake an agent made
+// on the order form (misspelled name, wrong phone/address, etc.) on any sale regardless of its
+// current status, including the status itself. Admin-only -- unlike approve/reject, which
+// Supervisors can also do within their own campaigns, free-form editing of any field is not
+// something a Supervisor needs for day-to-day review.
+router.patch('/:id', requireRole('Admin'), asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { rows: existing } = await pool.query('SELECT id FROM sales WHERE id = $1', [id]);
+  if (!existing[0]) return res.status(404).json({ error: 'Sale not found' });
+
+  const setClauses = [];
+  const values = [id];
+  const setField = (column, value) => {
+    values.push(value);
+    setClauses.push(`${column} = $${values.length}`);
+  };
+
+  const { customerName, phone, email, amount, agentNotes, saleDate, status } = req.body;
+  if (customerName !== undefined) setField('customer_name', customerName);
+  if (phone !== undefined) setField('phone', phone);
+  if (email !== undefined) setField('email', email || 'N/A');
+  if (agentNotes !== undefined) setField('agent_notes', agentNotes);
+  if (saleDate !== undefined) setField('sale_date', saleDate);
+
+  if (amount !== undefined) {
+    const parsedAmount = Number(amount);
+    if (!Number.isFinite(parsedAmount) || parsedAmount < 0) {
+      return res.status(400).json({ error: 'amount must be a non-negative number' });
+    }
+    setField('amount', parsedAmount);
+  }
+
+  for (const [jsonKey, column] of ORDER_DETAIL_FIELDS) {
+    if (req.body[jsonKey] !== undefined) setField(column, req.body[jsonKey] || null);
+  }
+
+  if (status !== undefined) {
+    if (!SALE_STATUSES.includes(status)) {
+      return res.status(400).json({ error: `status must be one of ${SALE_STATUSES.join(', ')}` });
+    }
+    setField('status', status);
+    setField('verified_by', await verifierName(req.user.id));
+  }
+
+  if (setClauses.length === 0) {
+    return res.status(400).json({ error: 'No editable fields supplied' });
+  }
+
+  await pool.query(`UPDATE sales SET ${setClauses.join(', ')} WHERE id = $1`, values);
+  const { rows } = await pool.query(`${SELECT_SALE} WHERE s.id = $1`, [id]);
+  res.json(reshapeSale(rows[0]));
+}));
+
 module.exports = router;

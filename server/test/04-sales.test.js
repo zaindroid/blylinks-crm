@@ -171,3 +171,57 @@ describe('sale approve/reject RBAC', () => {
     expect(stillApproved.body.find(s => s.id === sale.body.id).status).toBe('Approved');
   });
 });
+
+describe('PATCH /api/sales/:id -- Admin free-form edit', () => {
+  it('an Admin can correct customer details and the status on an already-reviewed sale', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+    const sale = await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'Jon Smyth', phone: '5551234567', amount: 100 });
+    await request(app).patch(`/api/sales/${sale.body.id}/approve`).set('Authorization', `Bearer ${admin.token}`).send({});
+
+    const edit = await request(app).patch(`/api/sales/${sale.body.id}`).set('Authorization', `Bearer ${admin.token}`)
+      .send({ customerName: 'John Smith', phone: '5559998888', city: 'Austin', status: 'Rejected' });
+    expect(edit.status).toBe(200);
+    expect(edit.body.customerName).toBe('John Smith');
+    expect(edit.body.phone).toBe('5559998888');
+    expect(edit.body.city).toBe('Austin');
+    expect(edit.body.status).toBe('Rejected');
+    expect(edit.body.verifiedBy).toContain('Admin');
+  });
+
+  it('a Supervisor cannot use the free-form edit endpoint', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const supUser = await insertUser({ role: 'Supervisor', username: uid('sale_edit_sup') });
+    await request(app).patch(`/api/users/${supUser.id}/campaigns`).set('Authorization', `Bearer ${admin.token}`).send({ campaignIds: [campaignId] });
+    const supToken = await loginToken(supUser.username, supUser.password);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+    const sale = await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 100 });
+
+    const res = await request(app).patch(`/api/sales/${sale.body.id}`).set('Authorization', `Bearer ${supToken}`).send({ customerName: 'Hacked' });
+    expect(res.status).toBe(403);
+  });
+
+  it('rejects an invalid status or a negative amount', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+    const sale = await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 100 });
+
+    const badStatus = await request(app).patch(`/api/sales/${sale.body.id}`).set('Authorization', `Bearer ${admin.token}`).send({ status: 'Bogus' });
+    expect(badStatus.status).toBe(400);
+
+    const badAmount = await request(app).patch(`/api/sales/${sale.body.id}`).set('Authorization', `Bearer ${admin.token}`).send({ amount: -5 });
+    expect(badAmount.status).toBe(400);
+  });
+
+  it('404s for a sale that does not exist', async () => {
+    const admin = await createAdmin();
+    const res = await request(app).patch('/api/sales/SALE-9999').set('Authorization', `Bearer ${admin.token}`).send({ customerName: 'X' });
+    expect(res.status).toBe(404);
+  });
+});

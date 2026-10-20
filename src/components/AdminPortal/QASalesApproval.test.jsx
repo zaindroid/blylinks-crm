@@ -14,7 +14,7 @@ const sale = (over) => ({
 const CURRENT_USER = { id: 'admin1', name: 'Boss', role: 'Admin' };
 
 const setup = (sales, props = {}) => render(
-  <QASalesApproval sales={sales} currentUser={CURRENT_USER} onApproveSale={vi.fn()} onRejectSale={vi.fn()} {...props} />
+  <QASalesApproval sales={sales} currentUser={CURRENT_USER} onApproveSale={vi.fn()} onRejectSale={vi.fn()} onUpdateSale={vi.fn()} {...props} />
 );
 
 describe('QASalesApproval agent filter', () => {
@@ -172,5 +172,39 @@ describe('QASalesApproval Admin can change the status of an already-reviewed sal
     expect(screen.getByText(/reviewed by boss/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /change to rejected/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /change to approved/i })).not.toBeInTheDocument();
+  });
+});
+
+describe('QASalesApproval Admin free-form sale edit', () => {
+  const SUPERVISOR = { id: 'sup1', name: 'Sup', role: 'Supervisor' };
+
+  it('Admin sees an "Edit" button on any sale, which opens a form prefilled from that sale', async () => {
+    const user = userEvent.setup();
+    setup([sale({ id: 'S1', customerName: 'Jon Smyth', status: 'Approved' })]);
+    await user.selectOptions(screen.getByDisplayValue(/pending review only/i), 'All');
+
+    await user.click(screen.getByRole('button', { name: /^edit$/i }));
+    expect(screen.getByText(/edit sale — s1/i)).toBeInTheDocument();
+    expect(screen.getByDisplayValue('Jon Smyth')).toBeInTheDocument();
+  });
+
+  it('saving the edit form calls onUpdateSale with the corrected fields, including status', async () => {
+    const user = userEvent.setup();
+    const onUpdateSale = vi.fn();
+    setup([sale({ id: 'S1', customerName: 'Jon Smyth', status: 'Pending' })], { onUpdateSale });
+
+    await user.click(screen.getByRole('button', { name: /^edit$/i }));
+    const nameInput = screen.getByDisplayValue('Jon Smyth');
+    await user.clear(nameInput);
+    await user.type(nameInput, 'John Smith');
+    await user.selectOptions(screen.getByLabelText(/sale status/i), 'Rejected');
+    await user.click(screen.getByRole('button', { name: /save changes/i }));
+
+    expect(onUpdateSale).toHaveBeenCalledWith('S1', expect.objectContaining({ customerName: 'John Smith', status: 'Rejected' }));
+  });
+
+  it('a Supervisor has no Edit button on any sale', () => {
+    setup([sale({ id: 'S1' })], { currentUser: SUPERVISOR });
+    expect(screen.queryByRole('button', { name: /^edit$/i })).not.toBeInTheDocument();
   });
 });

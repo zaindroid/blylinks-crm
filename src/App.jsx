@@ -38,7 +38,7 @@ import { getToken, setToken, decodeToken } from './api/client';
 import { logout as apiLogout } from './api/auth';
 import { fetchUsers, createUser, deactivateUser, updateUserCampaigns, updateBaseSalary, resetUserPassword, updateUserRole } from './api/users';
 import { fetchCampaigns, createCampaign, updateCampaign, toggleCampaignStatus } from './api/campaigns';
-import { fetchSales, submitSale, approveSale, rejectSale } from './api/sales';
+import { fetchSales, submitSale, approveSale, rejectSale, updateSale } from './api/sales';
 import { fetchAttendance, clockIn, clockOut, updateAttendanceStatus } from './api/attendance';
 import { fetchTargets, updateTarget } from './api/targets';
 import { fetchCallbacks, addCallback, completeCallback } from './api/callbacks';
@@ -443,6 +443,12 @@ export default function App() {
     setSales(await fetchSales());
   };
 
+  const handleUpdateSale = async (saleId, patch) => {
+    await updateSale(saleId, patch);
+    setSales(await fetchSales());
+    setProjects(await fetchCampaigns());
+  };
+
   // Callback Handlers
   const handleAddCallback = async (newCb) => {
     await addCallback({
@@ -777,6 +783,7 @@ export default function App() {
               currentUser={currentUser}
               onApproveSale={handleApproveSale}
               onRejectSale={handleRejectSale}
+              onUpdateSale={handleUpdateSale}
             />
           )}
 

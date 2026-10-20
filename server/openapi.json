@@ -27,6 +27,7 @@
     },
     "/api/sales/{id}/approve": { "patch": { "summary": "Approve sale. Admin: any sale, any current status (can flip an already-Rejected sale back to Approved). Supervisor: own-campaign-scope only, and only while the sale is still Pending.", "responses": { "200": { "description": "OK" } } } },
     "/api/sales/{id}/reject": { "patch": { "summary": "Reject sale. Admin: any sale, any current status (can flip an already-Approved sale back to Rejected). Supervisor: own-campaign-scope only, and only while the sale is still Pending.", "responses": { "200": { "description": "OK" } } } },
+    "/api/sales/{id}": { "patch": { "summary": "Free-form edit of any sale field (customerName, phone, email, amount, agentNotes, saleDate, status, and all order-detail fields), Admin only. Any subset of fields may be supplied.", "responses": { "200": { "description": "OK" } } } },
     "/api/attendance": { "get": { "summary": "List attendance logs", "responses": { "200": { "description": "OK" } } } },
     "/api/attendance/clock-in": { "post": { "summary": "Clock in", "responses": { "201": { "description": "Created" } } } },
     "/api/attendance/clock-out": { "post": { "summary": "Clock out", "responses": { "200": { "description": "OK" } } } },
