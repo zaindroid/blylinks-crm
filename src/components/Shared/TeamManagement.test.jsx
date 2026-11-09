@@ -22,6 +22,7 @@ const setup = (currentUser, extra = {}) => render(
     onUpdateBaseSalary={vi.fn()}
     onResetPassword={vi.fn()}
     onChangeRole={vi.fn()}
+    onDeleteAgentPermanently={vi.fn().mockResolvedValue(undefined)}
     onUpdateSalesTarget={vi.fn().mockResolvedValue(undefined)}
     {...extra}
   />
@@ -123,5 +124,39 @@ describe('TeamManagement role changes', () => {
     setup(ADMIN, { onChangeRole });
     await user.selectOptions(screen.getByLabelText('Role for Ayesha Khan'), 'Admin');
     expect(await screen.findByText(/cannot change your own role/i)).toBeInTheDocument();
+  });
+});
+
+describe('TeamManagement permanent agent deletion', () => {
+  it('an Admin sees "Delete Permanently" only on Agent rows, not Admin/Supervisor rows', () => {
+    setup(ADMIN);
+    expect(within(rowOf('Ayesha Khan')).getByRole('button', { name: /delete permanently/i })).toBeInTheDocument();
+    expect(within(rowOf('Sup')).queryByRole('button', { name: /delete permanently/i })).not.toBeInTheDocument();
+  });
+
+  it('a Supervisor never sees a "Delete Permanently" button', () => {
+    setup(SUPERVISOR);
+    expect(screen.queryByRole('button', { name: /delete permanently/i })).not.toBeInTheDocument();
+  });
+
+  it('the confirm button stays disabled until the agent\'s exact name is typed, then calls onDeleteAgentPermanently', async () => {
+    const onDeleteAgentPermanently = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    setup(ADMIN, { onDeleteAgentPermanently });
+
+    await user.click(within(rowOf('Ayesha Khan')).getByRole('button', { name: /delete permanently/i }));
+    const confirmButton = screen.getByRole('button', { name: /^permanently delete$/i });
+    expect(confirmButton).toBeDisabled();
+
+    const input = screen.getByLabelText(/type/i);
+    await user.type(input, 'wrong name');
+    expect(confirmButton).toBeDisabled();
+
+    await user.clear(input);
+    await user.type(input, 'Ayesha Khan');
+    expect(confirmButton).toBeEnabled();
+    await user.click(confirmButton);
+
+    expect(onDeleteAgentPermanently).toHaveBeenCalledWith('usr_a1');
   });
 });

@@ -36,7 +36,7 @@ import { buildCelebration, countMySales } from './utils/celebration';
 
 import { getToken, setToken, decodeToken } from './api/client';
 import { logout as apiLogout } from './api/auth';
-import { fetchUsers, createUser, deactivateUser, updateUserCampaigns, updateBaseSalary, resetUserPassword, updateUserRole } from './api/users';
+import { fetchUsers, createUser, deactivateUser, deleteAgentPermanently, updateUserCampaigns, updateBaseSalary, resetUserPassword, updateUserRole } from './api/users';
 import { fetchCampaigns, createCampaign, updateCampaign, toggleCampaignStatus } from './api/campaigns';
 import { fetchSales, submitSale, approveSale, rejectSale, updateSale } from './api/sales';
 import { fetchAttendance, clockIn, clockOut, updateAttendanceStatus } from './api/attendance';
@@ -525,6 +525,22 @@ export default function App() {
     setAllUsers(await fetchUsers());
   };
 
+  // Irreversible: also wipes that agent's sales, attendance, payroll, callbacks and tickets
+  // server-side, so every list that could contain their data is refreshed afterward.
+  const handleDeleteAgentPermanently = async (userId) => {
+    await deleteAgentPermanently(userId);
+    const [usersData, salesData, attendanceData, payrollData, callbacksData, ticketsData, targetsData] = await Promise.all([
+      fetchUsers(), fetchSales(), fetchAttendance(), fetchPayroll(), fetchCallbacks(), fetchTickets(), fetchTargets()
+    ]);
+    setAllUsers(usersData);
+    setSales(salesData);
+    setAttendanceLogs(attendanceData);
+    setPayroll(payrollData);
+    setCallbacks(callbacksData);
+    setTickets(ticketsData);
+    setTargets(targetsData);
+  };
+
   const handleUpdateUserCampaigns = async (userId, campaignIds) => {
     await updateUserCampaigns(userId, campaignIds);
     setAllUsers(await fetchUsers());
@@ -802,6 +818,7 @@ export default function App() {
               projects={projects}
               onAddUser={handleAddUser}
               onDeactivateUser={handleDeactivateUser}
+              onDeleteAgentPermanently={handleDeleteAgentPermanently}
               onUpdateUserCampaigns={handleUpdateUserCampaigns}
               onUpdateBaseSalary={handleUpdateBaseSalary}
               onResetPassword={handleResetPassword}

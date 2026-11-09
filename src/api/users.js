@@ -12,6 +12,12 @@ export function deactivateUser(id) {
   return apiFetch(`/users/${id}`, { method: 'DELETE' });
 }
 
+// Admin only, Agent accounts only. Irreversible: also erases their sales, attendance,
+// payroll, salary advances, callbacks, tickets and chat messages.
+export function deleteAgentPermanently(id) {
+  return apiFetch(`/users/${id}/permanent`, { method: 'DELETE' });
+}
+
 export function updateUserCampaigns(id, campaignIds) {
   return apiFetch(`/users/${id}/campaigns`, { method: 'PATCH', body: { campaignIds } });
 }

@@ -3,17 +3,15 @@ import { DollarSign, Printer, Clock, ShieldCheck, Eye, X, RefreshCw, Edit3, Wall
 import { formatPKR } from '../../utils/currency';
 import { fetchAdvances, addAdvance, deleteAdvance } from '../../api/payroll';
 
-function currentMonthValue() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-}
-
 const today = () => new Date().toISOString().slice(0, 10);
 const EMPTY_ADVANCE = { agentId: '', amountPkr: '', givenOn: '', note: '' };
 
 export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatus, onGeneratePayroll, onUpdatePayrollAdjustments }) {
   const [selectedPayslip, setSelectedPayslip] = useState(null);
-  const [generateMonth, setGenerateMonth] = useState(currentMonthValue());
+  // Deliberately blank, not defaulted to the current month -- Admin must explicitly pick the
+  // month being paid before anything can be calculated, so payroll is never generated for the
+  // wrong (or current, still-incomplete) month by accident.
+  const [generateMonth, setGenerateMonth] = useState('');
   const [generating, setGenerating] = useState(false);
   const [adjustingFor, setAdjustingFor] = useState(null);
   const [adjustForm, setAdjustForm] = useState({ commissionPkr: '', bonusPkr: '', deductionsPkr: '', workingDays: '' });
@@ -52,6 +50,7 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
   };
 
   const handleGenerate = async () => {
+    if (!generateMonth) return;
     setGenerating(true);
     try {
       await runPayrollAction(() => onGeneratePayroll(generateMonth));
@@ -138,8 +137,9 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
             value={generateMonth}
             onChange={(e) => setGenerateMonth(e.target.value)}
             aria-label="Pay month"
+            placeholder="Select a month"
           />
-          <button className="btn btn-primary" onClick={handleGenerate} disabled={generating}>
+          <button className="btn btn-primary" onClick={handleGenerate} disabled={generating || !generateMonth} title={!generateMonth ? 'Select a month first' : undefined}>
             <RefreshCw size={15} /> {generating ? 'Calculating…' : 'Calculate Payroll'}
           </button>
         </div>

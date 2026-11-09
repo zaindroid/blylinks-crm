@@ -11,6 +11,7 @@
       "post": { "summary": "Create a user (Admin: any role/campaigns; Supervisor: Agent-only, campaigns within own scope)", "responses": { "201": { "description": "Created" } } }
     },
     "/api/users/{id}": { "delete": { "summary": "Deactivate a user (Admin: anyone; Supervisor: own-scope Agents only)", "responses": { "200": { "description": "OK" } } } },
+    "/api/users/{id}/permanent": { "delete": { "summary": "Permanently and irreversibly delete an Agent account, Admin only. Also erases their sales, attendance, payroll, salary advances, callbacks, tickets, chat messages and target; unassigns their leads. Not available for Admin/Supervisor accounts.", "responses": { "200": { "description": "OK" } } } },
     "/api/users/{id}/campaigns": { "patch": { "summary": "Replace a user's campaign access (Admin)", "responses": { "200": { "description": "OK" } } } },
     "/api/users/{id}/base-salary": { "patch": { "summary": "Set a user's monthly base salary in PKR, used by payroll generation (Admin)", "responses": { "200": { "description": "OK" } } } },
     "/api/users/{id}/reset-password": { "patch": { "summary": "Admin/Supervisor-mediated forgot-password: generates a temp password (returned once, in the response), flags the account must_change_password. Admin: anyone but self; Supervisor: own-scope Agents only.", "responses": { "200": { "description": "OK" } } } },

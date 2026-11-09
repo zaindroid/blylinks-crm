@@ -214,4 +214,57 @@ router.delete('/:id', asyncHandler(async (req, res) => {
   res.json({ status: 'deactivated', id });
 }));
 
+// Permanent, irreversible removal -- unlike DELETE /:id above (which only deactivates), this erases
+// the agent row AND every business record tied to them: sales, attendance, payroll, salary advances,
+// callbacks, tickets, chat messages and their target. Scoped to Agent accounts only -- an Admin/
+// Supervisor is also the author of record for campaigns/KB articles/DNC entries/message groups, so
+// hard-deleting one of those is a much bigger blast radius than this feature is for; those columns
+// are defensively nulled out below rather than deleted, but in practice an Agent never has rows there.
+router.delete('/:id/permanent', requireRole('Admin'), asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  if (id === req.user.id) {
+    return res.status(400).json({ error: 'You cannot remove your own account' });
+  }
+
+  const target = await findUserRowById(id);
+  if (!target) return res.status(404).json({ error: 'User not found' });
+  if (target.role !== 'Agent') {
+    return res.status(400).json({ error: 'Permanent deletion is only available for Agent accounts. Use Remove (deactivate) for Admins/Supervisors.' });
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    // Recoveries reference an advance with no cascade, so they must go before the advance itself.
+    await client.query('DELETE FROM salary_advance_recoveries WHERE advance_id IN (SELECT id FROM salary_advances WHERE agent_id = $1)', [id]);
+    await client.query('DELETE FROM salary_advances WHERE agent_id = $1', [id]);
+    await client.query('DELETE FROM payroll WHERE agent_id = $1', [id]);
+    await client.query('DELETE FROM sales WHERE agent_id = $1', [id]);
+    await client.query('DELETE FROM attendance_logs WHERE agent_id = $1', [id]);
+    await client.query('DELETE FROM callbacks WHERE agent_id = $1', [id]);
+    await client.query('DELETE FROM tickets WHERE agent_id = $1', [id]);
+    await client.query('DELETE FROM messages WHERE sender_id = $1', [id]);
+    await client.query('DELETE FROM targets WHERE agent_id = $1', [id]);
+    // Customer-owned data, not the agent's -- unassign rather than delete.
+    await client.query('UPDATE leads SET assigned_agent_id = NULL WHERE assigned_agent_id = $1', [id]);
+    // Defensive only: these are normally Admin/Supervisor actions, but nothing stops the column
+    // referencing an Agent, and leaving it would otherwise block the final DELETE FROM users.
+    await client.query('UPDATE message_groups SET created_by = NULL WHERE created_by = $1', [id]);
+    await client.query('UPDATE dnc_numbers SET added_by = NULL WHERE added_by = $1', [id]);
+    await client.query('UPDATE salary_advances SET created_by = NULL WHERE created_by = $1', [id]);
+    await client.query('UPDATE ip_allowlist SET created_by = NULL WHERE created_by = $1', [id]);
+    await client.query('UPDATE kb_articles SET created_by = NULL WHERE created_by = $1', [id]);
+    // campaign_access and message_group_members both have ON DELETE CASCADE on this column already.
+    await client.query('DELETE FROM users WHERE id = $1', [id]);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  res.json({ status: 'deleted', id });
+}));
+
 module.exports = router;

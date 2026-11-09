@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { UserPlus, Trash2, Settings, X, Users as UsersIcon, DollarSign, KeyRound, Copy, Check, Target } from 'lucide-react';
+import { UserPlus, Trash2, Settings, X, Users as UsersIcon, DollarSign, KeyRound, Copy, Check, Target, AlertTriangle } from 'lucide-react';
 import { formatPKR } from '../../utils/currency';
 
 const ROLE_OPTIONS = ['Admin', 'Supervisor', 'Agent'];
 
-export default function TeamManagement({ currentUser, users, projects, onAddUser, onDeactivateUser, onUpdateUserCampaigns, onUpdateBaseSalary, onResetPassword, onChangeRole, targets = [], onUpdateSalesTarget }) {
+export default function TeamManagement({ currentUser, users, projects, onAddUser, onDeactivateUser, onDeleteAgentPermanently, onUpdateUserCampaigns, onUpdateBaseSalary, onResetPassword, onChangeRole, targets = [], onUpdateSalesTarget }) {
   const isAdmin = currentUser.role === 'Admin';
   const isSupervisor = currentUser.role === 'Supervisor';
 
@@ -20,6 +20,10 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
   const [resetError, setResetError] = useState('');
   const [roleError, setRoleError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [deletingAgent, setDeletingAgent] = useState(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   const ownCampaignIds = currentUser.allowedCampaignIds || [];
   const assignableCampaigns = isAdmin ? projects : projects.filter(p => ownCampaignIds.includes(p.id));
@@ -97,6 +101,29 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
 
   const handleRemove = (user) => {
     onDeactivateUser(user.id);
+  };
+
+  const openDeleteAgent = (user) => {
+    setDeletingAgent(user);
+    setDeleteConfirmText('');
+    setDeleteError('');
+  };
+
+  const handleConfirmDeleteAgent = async () => {
+    if (deleteConfirmText !== deletingAgent.name) {
+      setDeleteError('Name does not match. Type it exactly to confirm.');
+      return;
+    }
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await onDeleteAgentPermanently(deletingAgent.id);
+      setDeletingAgent(null);
+    } catch (err) {
+      setDeleteError(err.message || 'Could not delete this agent.');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const handleResetPassword = async (user) => {
@@ -230,6 +257,11 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
                       {u.id !== currentUser.id && u.status === 'Active' && (isAdmin || u.role === 'Agent') && (
                         <button className="btn btn-danger btn-sm" onClick={() => handleRemove(u)}>
                           <Trash2 size={13} /> Remove
+                        </button>
+                      )}
+                      {isAdmin && u.role === 'Agent' && u.id !== currentUser.id && (
+                        <button className="btn btn-danger btn-sm" onClick={() => openDeleteAgent(u)} title="Permanently delete this agent and all their records">
+                          <AlertTriangle size={13} /> Delete Permanently
                         </button>
                       )}
                     </div>
@@ -440,6 +472,47 @@ export default function TeamManagement({ currentUser, users, projects, onAddUser
             </div>
             <div className="modal-footer">
               <button className="btn btn-primary" onClick={() => setRoleError('')}>Close</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deletingAgent && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '440px' }}>
+            <div className="modal-header">
+              <span className="modal-title flex-align"><AlertTriangle size={16} className="text-danger" /> Permanently Delete {deletingAgent.name}</span>
+              <button className="icon-btn" onClick={() => setDeletingAgent(null)}><X size={18} /></button>
+            </div>
+            <div className="modal-body">
+              <div className="error-alert margin-bottom">
+                This cannot be undone. It permanently deletes {deletingAgent.name}'s account and ALL of their data:
+                every sale, attendance record, payroll record, salary advance, callback and support ticket.
+                Their leads are unassigned rather than deleted.
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="delete-agent-confirm-input">Type <strong>{deletingAgent.name}</strong> to confirm</label>
+                <input
+                  id="delete-agent-confirm-input"
+                  type="text"
+                  className="form-input"
+                  value={deleteConfirmText}
+                  onChange={e => setDeleteConfirmText(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              {deleteError && <div className="error-alert margin-top">{deleteError}</div>}
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={() => setDeletingAgent(null)}>Cancel</button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                disabled={deleting || deleteConfirmText !== deletingAgent.name}
+                onClick={handleConfirmDeleteAgent}
+              >
+                {deleting ? 'Deleting…' : 'Permanently Delete'}
+              </button>
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, within, waitFor } from '@testing-library/react';
+import { render, screen, within, waitFor, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import AdminPayroll from './AdminPayroll';
 import * as payrollApi from '../../api/payroll';
@@ -43,6 +43,13 @@ describe('AdminPayroll', () => {
     expect(row.textContent).toMatch(/9,?500/); // net
   });
 
+  it('the month field starts blank, not defaulted to the current month, and the button is disabled until one is picked', async () => {
+    setup();
+    await screen.findByText('medical');
+    expect(screen.getByLabelText(/pay month/i)).toHaveValue('');
+    expect(screen.getByRole('button', { name: /calculate payroll/i })).toBeDisabled();
+  });
+
   it('calculating payroll for the chosen month calls the handler and refreshes advance balances', async () => {
     const onGeneratePayroll = vi.fn().mockResolvedValue(undefined);
     const user = userEvent.setup();
@@ -50,8 +57,13 @@ describe('AdminPayroll', () => {
     await screen.findByText('medical');
     payrollApi.fetchAdvances.mockClear();
 
+    // jsdom doesn't implement the native month-picker widget, so drive it with a raw change event.
+    const monthInput = screen.getByLabelText(/pay month/i);
+    fireEvent.change(monthInput, { target: { value: '2026-08' } });
+    expect(monthInput).toHaveValue('2026-08');
+
     await user.click(screen.getByRole('button', { name: /calculate payroll/i }));
-    await waitFor(() => expect(onGeneratePayroll).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onGeneratePayroll).toHaveBeenCalledWith('2026-08'));
     await waitFor(() => expect(payrollApi.fetchAdvances).toHaveBeenCalled());
   });
 
