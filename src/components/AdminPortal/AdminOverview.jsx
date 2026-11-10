@@ -181,7 +181,7 @@ export default function AdminOverview({
           </div>
         </div>
 
-        <SalesLeaderboard sales={sales} />
+        <SalesLeaderboard currentUser={currentUser} />
       </div>
 
       {/* Floating Team Messenger (bottom corner) */}

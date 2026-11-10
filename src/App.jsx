@@ -37,7 +37,7 @@ import { buildCelebration, countMySales } from './utils/celebration';
 import { getToken, setToken, decodeToken } from './api/client';
 import { logout as apiLogout } from './api/auth';
 import { fetchUsers, createUser, deactivateUser, deleteAgentPermanently, updateUserCampaigns, updateBaseSalary, resetUserPassword, updateUserRole } from './api/users';
-import { fetchCampaigns, createCampaign, updateCampaign, toggleCampaignStatus } from './api/campaigns';
+import { fetchCampaigns, createCampaign, updateCampaign, toggleCampaignStatus, deleteCampaignPermanently } from './api/campaigns';
 import { fetchSales, submitSale, approveSale, rejectSale, updateSale } from './api/sales';
 import { fetchAttendance, clockIn, clockOut, updateAttendanceStatus } from './api/attendance';
 import { fetchTargets, updateTarget } from './api/targets';
@@ -602,12 +602,26 @@ export default function App() {
     setProjects(await fetchCampaigns());
   };
 
+  // Irreversible: also wipes every sale, lead and callback tied to this campaign server-side,
+  // so every list that could contain its data is refreshed afterward.
+  const handleDeleteProjectPermanently = async (projId) => {
+    await deleteCampaignPermanently(projId);
+    const [projectsData, salesData, leadsData, callbacksData] = await Promise.all([
+      fetchCampaigns(), fetchSales(), fetchLeads(), fetchCallbacks()
+    ]);
+    setProjects(projectsData);
+    setSales(salesData);
+    setLeads(leadsData);
+    setCallbacks(callbacksData);
+  };
+
   // Messaging Handler
   // Sending a message is your own action -- it must never generate a notification
   // back to yourself. Notifications for incoming messages from other people are
   // handled separately, by the messenger widgets that poll for them.
   const handleSendMessage = async (newMsg) => {
-    await sendMessage(newMsg.channel, newMsg.text, newMsg.recipientId);
+    const file = newMsg.fileName ? { fileName: newMsg.fileName, fileType: newMsg.fileType, fileData: newMsg.fileData } : null;
+    await sendMessage(newMsg.channel, newMsg.text, newMsg.recipientId, file);
     setMessages(await fetchMessages());
   };
 
@@ -869,6 +883,7 @@ export default function App() {
               onAddProject={handleAddProject}
               onUpdateProject={handleUpdateProject}
               onToggleProjectStatus={handleToggleProjectStatus}
+              onDeleteProjectPermanently={handleDeleteProjectPermanently}
             />
           )}
 

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { CalendarRange } from 'lucide-react';
+import { CalendarRange, List, Calendar as CalendarIcon } from 'lucide-react';
 import { DATE_RANGE_PRESETS, filterByDateOnlyRange } from '../../utils/dateFilters';
+import AttendanceCalendar from './AttendanceCalendar';
 
 const STATUS_OPTIONS = ['Present', 'Tardy', 'Late', 'Clocked Out'];
 
@@ -16,6 +17,7 @@ export default function AdminAttendance({ attendanceLogs, users, onUpdateAttenda
   const [dateRangePreset, setDateRangePreset] = useState('All Time');
   const [customFrom, setCustomFrom] = useState('');
   const [customTo, setCustomTo] = useState('');
+  const [viewMode, setViewMode] = useState('calendar'); // 'calendar' | 'list'
   const agents = users.filter(u => u.role === 'Agent');
 
   const byAgent = selectedAgentId === 'All'
@@ -54,8 +56,32 @@ export default function AdminAttendance({ attendanceLogs, users, onUpdateAttenda
             </>
           )}
         </div>
+
+        <div className="btn-group-sm">
+          <button
+            type="button"
+            className={`btn btn-sm ${viewMode === 'calendar' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setViewMode('calendar')}
+          >
+            <CalendarIcon size={14} /> Calendar
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${viewMode === 'list' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => setViewMode('list')}
+          >
+            <List size={14} /> List
+          </button>
+        </div>
       </div>
 
+      {viewMode === 'calendar' && (
+        <div className="card margin-bottom">
+          <AttendanceCalendar logs={byAgent} agents={agents} selectedAgentId={selectedAgentId} />
+        </div>
+      )}
+
+      {viewMode === 'list' && (
       <div className="table-container">
         <table className="data-table">
           <thead>
@@ -101,6 +127,7 @@ export default function AdminAttendance({ attendanceLogs, users, onUpdateAttenda
           </tbody>
         </table>
       </div>
+      )}
     </div>
   );
 }

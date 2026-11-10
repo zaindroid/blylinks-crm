@@ -142,7 +142,7 @@ export default function SupervisorOverview({
 
       {/* Sales Board */}
       <div className="margin-top">
-        <SalesLeaderboard sales={sales} />
+        <SalesLeaderboard currentUser={currentUser} />
       </div>
 
       {/* Floating Team Messenger (bottom corner) */}

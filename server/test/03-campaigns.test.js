@@ -1,5 +1,5 @@
 const request = require('supertest');
-const { app, uid, createAdmin, createCampaign, createAgentViaApi, insertUser, loginToken } = require('./helpers');
+const { app, pool, uid, createAdmin, createCampaign, createAgentViaApi, insertUser, loginToken } = require('./helpers');
 
 async function createSupervisor(admin, campaignIds) {
   const user = await insertUser({ role: 'Supervisor' });
@@ -248,5 +248,67 @@ describe('assignedAgentIds only ever lists Agents', () => {
     const list = await request(app).get('/api/campaigns').set('Authorization', `Bearer ${admin.token}`);
     expect(list.body.find(c => c.id === campaignId).assignedAgentIds).toEqual([agent.id]);
     void supervisor;
+  });
+});
+
+describe('DELETE /api/campaigns/:id/permanent -- irreversible campaign deletion', () => {
+  it('an Admin can permanently delete a campaign, erasing its sales, leads and callbacks (but not payroll)', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+
+    const sale = await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 100 });
+    const callback = await request(app).post('/api/callbacks').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'Cust', phone: '5551234567' });
+    const lead = await request(app).post('/api/leads').set('Authorization', `Bearer ${admin.token}`)
+      .send({ campaignId, name: 'Lead', phone: '5550001111', assignedAgentId: agent.id });
+    await pool.query(
+      `INSERT INTO dnc_numbers (id, campaign_id, phone_key, phone_display) VALUES ($1,$2,'5552223333','555-222-3333')`,
+      [`dnc_${campaignId}`, campaignId]
+    );
+    await pool.query(
+      `INSERT INTO payroll (id, agent_id, month, base_salary_pkr, working_days, per_day_pkr, net_salary_pkr, status)
+       VALUES ($1,$2,'2026-01',50000,10,2083.33,20833.30,'Pending')`,
+      [`pay_${agent.id}_2026-01`, agent.id]
+    );
+
+    const res = await request(app).delete(`/api/campaigns/${campaignId}/permanent`).set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ status: 'deleted', id: campaignId });
+
+    const { rows: [campaignRow] } = await pool.query('SELECT 1 FROM campaigns WHERE id = $1', [campaignId]);
+    expect(campaignRow).toBeUndefined();
+    const { rows: salesRows } = await pool.query('SELECT 1 FROM sales WHERE id = $1', [sale.body.id]);
+    expect(salesRows).toHaveLength(0);
+    const { rows: callbackRows } = await pool.query('SELECT 1 FROM callbacks WHERE id = $1', [callback.body.id]);
+    expect(callbackRows).toHaveLength(0);
+    const { rows: leadRows } = await pool.query('SELECT 1 FROM leads WHERE id = $1', [lead.body.id]);
+    expect(leadRows).toHaveLength(0);
+    const { rows: dncRows } = await pool.query('SELECT 1 FROM dnc_numbers WHERE campaign_id = $1', [campaignId]);
+    expect(dncRows).toHaveLength(0);
+    const { rows: accessRows } = await pool.query('SELECT 1 FROM campaign_access WHERE campaign_id = $1', [campaignId]);
+    expect(accessRows).toHaveLength(0);
+
+    // Payroll has no campaign_id -- it must survive the campaign that generated the commission being gone.
+    const { rows: payrollRows } = await pool.query('SELECT 1 FROM payroll WHERE agent_id = $1', [agent.id]);
+    expect(payrollRows).toHaveLength(1);
+  });
+
+  it('a Supervisor cannot permanently delete a campaign', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const supervisor = await createSupervisor(admin, [campaignId]);
+
+    const res = await request(app).delete(`/api/campaigns/${campaignId}/permanent`).set('Authorization', `Bearer ${supervisor.token}`);
+    expect(res.status).toBe(403);
+    const { rows } = await pool.query('SELECT 1 FROM campaigns WHERE id = $1', [campaignId]);
+    expect(rows).toHaveLength(1);
+  });
+
+  it('404s for a campaign that does not exist', async () => {
+    const admin = await createAdmin();
+    const res = await request(app).delete('/api/campaigns/camp_nope/permanent').set('Authorization', `Bearer ${admin.token}`);
+    expect(res.status).toBe(404);
   });
 });

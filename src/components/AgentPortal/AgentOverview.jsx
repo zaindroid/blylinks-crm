@@ -175,7 +175,7 @@ export default function AgentOverview({
 
       {/* Sales Board */}
       <div className="margin-top">
-        <SalesLeaderboard sales={sales} campaignId={selectedCampaignId} />
+        <SalesLeaderboard currentUser={currentUser} />
       </div>
 
       {/* Floating Team Messenger (bottom corner) */}

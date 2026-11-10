@@ -4,6 +4,9 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import ChatWindow from './ChatWindow';
 import { renderWithChat, ME, OTHER, GROUPS, dmWithOther, msg } from '../../test/chatTestUtils';
+import * as messagesApi from '../../api/messages';
+
+vi.mock('../../api/messages');
 
 const setup = (ctx, props = {}) =>
   renderWithChat(<ChatWindow variant="inline" currentUser={ME} users={[OTHER]} onSendMessage={vi.fn()} {...props} />, ctx);
@@ -137,5 +140,75 @@ describe('ChatWindow sending', () => {
     await user.type(await screen.findByPlaceholderText(/message agent two/i), 'hey');
     await user.click(screen.getByRole('button', { name: /send message/i }));
     await waitFor(() => expect(onSendMessage).toHaveBeenCalledWith({ channel: `dm:${dmWithOther}`, text: 'hey', recipientId: OTHER.id }));
+  });
+});
+
+describe('ChatWindow file sharing', () => {
+  it('attaching a file shows it pending, and sending includes it (text is optional)', async () => {
+    const onSendMessage = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    setup({}, { onSendMessage });
+    await screen.findByPlaceholderText(/message announcements/i);
+
+    const file = new File(['hello world'], 'notes.txt', { type: 'text/plain' });
+    await user.upload(screen.getByLabelText(/attach a file to/i), file);
+
+    expect(await screen.findByText('notes.txt')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /send message/i }));
+
+    await waitFor(() => expect(onSendMessage).toHaveBeenCalledWith(expect.objectContaining({
+      channel: 'announcements',
+      text: '',
+      fileName: 'notes.txt',
+      fileType: 'text/plain'
+    })));
+    const sent = onSendMessage.mock.calls[0][0];
+    expect(typeof sent.fileData).toBe('string');
+    expect(sent.fileData.length).toBeGreaterThan(0);
+  });
+
+  it('rejects a file over the 5MB cap client-side, without attaching it', async () => {
+    const user = userEvent.setup();
+    setup();
+    await screen.findByPlaceholderText(/message announcements/i);
+
+    const bigFile = new File([new Uint8Array(6 * 1024 * 1024)], 'big.bin', { type: 'application/octet-stream' });
+    await user.upload(screen.getByLabelText(/attach a file to/i), bigFile);
+
+    expect(await screen.findByText(/too large to share/i)).toBeInTheDocument();
+    expect(screen.queryByText('big.bin')).not.toBeInTheDocument();
+  });
+
+  it('removing a pending file clears it before sending', async () => {
+    const user = userEvent.setup();
+    setup();
+    await screen.findByPlaceholderText(/message announcements/i);
+
+    const file = new File(['x'], 'doc.txt', { type: 'text/plain' });
+    await user.upload(screen.getByLabelText(/attach a file to/i), file);
+    await screen.findByText('doc.txt');
+
+    await user.click(screen.getByRole('button', { name: /remove attached file/i }));
+    expect(screen.queryByText('doc.txt')).not.toBeInTheDocument();
+  });
+
+  it('shows an attachment chip on a received message, which opens the file on click', async () => {
+    const user = userEvent.setup();
+    const blob = new Blob(['content']);
+    messagesApi.fetchAttachmentBlob.mockResolvedValue(blob);
+    const createObjectURL = vi.fn().mockReturnValue('blob:fake-url');
+    URL.createObjectURL = createObjectURL;
+    URL.revokeObjectURL = vi.fn();
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => {});
+
+    const messages = [msg({ channel: 'announcements', text: '', hasAttachment: true, fileName: 'report.pdf', fileType: 'application/pdf', fileSize: 20480 })];
+    setup({ messages });
+
+    const chip = await screen.findByRole('button', { name: /report\.pdf/i });
+    expect(chip).toHaveTextContent('20.0 KB');
+    await user.click(chip);
+
+    await waitFor(() => expect(messagesApi.fetchAttachmentBlob).toHaveBeenCalledWith(messages[0].id));
+    expect(openSpy).toHaveBeenCalledWith('blob:fake-url', '_blank', 'noopener');
   });
 });

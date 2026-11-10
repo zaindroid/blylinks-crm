@@ -1,9 +1,64 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Send, MessageSquare, Hash, ArrowLeft } from 'lucide-react';
+import { Send, MessageSquare, Hash, ArrowLeft, Paperclip, X, FileText, Download } from 'lucide-react';
 import { dmChannelId, dmPartnerId as partnerOf, isDmChannel } from '../../utils/chatChannels';
+import { fetchAttachmentBlob } from '../../api/messages';
 import { useChat } from './ChatContext';
 
 const NARROW_QUERY = '(max-width: 560px)';
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024; // 5MB, must match the server's cap
+
+function formatBytes(n) {
+  if (!Number.isFinite(n)) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function readFileAsBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      // "data:<mime>;base64,<data>" -- only the part after the comma is the actual base64 payload.
+      const result = String(reader.result || '');
+      resolve(result.slice(result.indexOf(',') + 1));
+    };
+    reader.onerror = () => reject(reader.error || new Error('Could not read the file'));
+    reader.readAsDataURL(file);
+  });
+}
+
+// A message's own attachment chip: click to fetch the (authenticated) blob and open/download it.
+function AttachmentChip({ message }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleOpen = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      const blob = await fetchAttachmentBlob(message.id);
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank', 'noopener');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      setError(err.message || 'Could not open this file.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="chat-attachment-chip">
+      <button type="button" className="chat-attachment-btn" onClick={handleOpen} disabled={busy}>
+        <FileText size={14} />
+        <span className="chat-attachment-name">{message.fileName}</span>
+        <span className="chat-attachment-size">{formatBytes(message.fileSize)}</span>
+        <Download size={13} />
+      </button>
+      {error && <div className="chat-attachment-error">{error}</div>}
+    </div>
+  );
+}
 
 function useIsNarrow() {
   const [narrow, setNarrow] = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.(NARROW_QUERY).matches);
@@ -44,6 +99,9 @@ export default function ChatWindow({ variant, visible = true, currentUser, users
   const [mobileView, setMobileView] = useState('list');
   const [textInput, setTextInput] = useState('');
   const [sendError, setSendError] = useState('');
+  const [pendingFile, setPendingFile] = useState(null); // { fileName, fileType, fileData }
+  const [sending, setSending] = useState(false);
+  const fileInputRef = useRef(null);
   const messagesEndRef = useRef(null);
   const isNarrow = useIsNarrow();
   const tabVisible = useTabVisible();
@@ -128,25 +186,47 @@ export default function ChatWindow({ variant, visible = true, currentUser, users
     ? dmContacts.find(u => u.id === activePartnerId)?.name || 'Direct Message'
     : groups.find(g => g.id === activeChannel)?.name || '';
 
+  const handlePickFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // let picking the same file again re-trigger onChange
+    if (!file) return;
+    setSendError('');
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      setSendError(`"${file.name}" is too large to share (max ${formatBytes(MAX_ATTACHMENT_BYTES)}).`);
+      return;
+    }
+    try {
+      const fileData = await readFileAsBase64(file);
+      setPendingFile({ fileName: file.name, fileType: file.type || 'application/octet-stream', fileData, size: file.size });
+    } catch {
+      setSendError('Could not read that file.');
+    }
+  };
+
   const handleSend = async (e) => {
     e.preventDefault();
-    if (!textInput.trim()) return;
+    if (!textInput.trim() && !pendingFile) return;
     if (!activeChannel) {
       setSendError('Pick a group or start a Direct Message before sending.');
       return;
     }
     setSendError('');
+    setSending(true);
     try {
       await onSendMessage({
         channel: activeChannel,
         text: textInput,
+        ...(pendingFile ? { fileName: pendingFile.fileName, fileType: pendingFile.fileType, fileData: pendingFile.fileData } : {}),
         ...(isDmChannel(activeChannel) ? { recipientId: activePartnerId } : {})
       });
     } catch (err) {
       setSendError(err.message || 'Failed to send message.');
+      setSending(false);
       return;
     }
     setTextInput('');
+    setPendingFile(null);
+    setSending(false);
   };
 
   const rowLabel = (name, channel) => {
@@ -238,7 +318,8 @@ export default function ChatWindow({ variant, visible = true, currentUser, users
                         <span className={`chat-msg-role-pill ${msg.senderRole === 'Admin' ? 'admin' : 'agent'}`}>{msg.senderRole}</span>
                       </div>
                     )}
-                    <div className="chat-msg-text">{msg.text}</div>
+                    {msg.text && <div className="chat-msg-text">{msg.text}</div>}
+                    {msg.hasAttachment && <AttachmentChip message={msg} />}
                     <div className="chat-msg-time">{msg.timestamp}</div>
                   </div>
                 </div>
@@ -250,7 +331,34 @@ export default function ChatWindow({ variant, visible = true, currentUser, users
 
         {sendError && <div className="chat-send-error">{sendError}</div>}
 
+        {pendingFile && (
+          <div className="chat-pending-file">
+            <Paperclip size={13} />
+            <span className="chat-pending-file-name">{pendingFile.fileName}</span>
+            <span className="chat-pending-file-size">{formatBytes(pendingFile.size)}</span>
+            <button type="button" className="icon-btn-sm" onClick={() => setPendingFile(null)} aria-label="Remove attached file">
+              <X size={13} />
+            </button>
+          </div>
+        )}
+
         <form className="chat-input-row" onSubmit={handleSend}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            className="sr-only"
+            onChange={handlePickFile}
+            aria-label={`Attach a file to ${activeLabel}`}
+          />
+          <button
+            type="button"
+            className="icon-btn"
+            aria-label="Attach a file"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={sending}
+          >
+            <Paperclip size={16} />
+          </button>
           <label htmlFor={`chat-message-input-${variant}`} className="sr-only">Message {activeLabel}</label>
           <input
             id={`chat-message-input-${variant}`}
@@ -261,7 +369,7 @@ export default function ChatWindow({ variant, visible = true, currentUser, users
             onChange={(e) => setTextInput(e.target.value)}
             autoComplete="off"
           />
-          <button type="submit" className="icon-btn" aria-label="Send message">
+          <button type="submit" className="icon-btn" aria-label="Send message" disabled={sending}>
             <Send size={16} />
           </button>
         </form>
@@ -350,6 +458,22 @@ export default function ChatWindow({ variant, visible = true, currentUser, users
         .chat-msg-row.mine .chat-msg-time { color: rgba(255,255,255,0.85); }
 
         .chat-send-error { font-size: 0.75rem; color: var(--status-error); padding: 0 0.9rem 0.4rem; }
+        .chat-attachment-chip { margin-top: 0.35rem; }
+        .chat-attachment-btn {
+          display: inline-flex; align-items: center; gap: 0.35rem; max-width: 100%;
+          border: 1px solid rgba(255,255,255,0.3); background: rgba(255,255,255,0.08); color: inherit;
+          border-radius: var(--radius-sm); padding: 0.3rem 0.5rem; font-size: 0.72rem; cursor: pointer;
+        }
+        .chat-msg-row:not(.mine) .chat-attachment-btn { border-color: var(--border-color); background: var(--bg-card); }
+        .chat-attachment-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 140px; }
+        .chat-attachment-size { opacity: 0.75; white-space: nowrap; }
+        .chat-attachment-error { font-size: 0.65rem; color: var(--status-error); margin-top: 0.2rem; }
+        .chat-pending-file {
+          display: flex; align-items: center; gap: 0.4rem; margin: 0 0.9rem 0.4rem; padding: 0.3rem 0.5rem;
+          background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); font-size: 0.75rem;
+        }
+        .chat-pending-file-name { font-weight: 600; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .chat-pending-file-size { color: var(--text-subtle); }
         .chat-input-row { display: flex; gap: 0.5rem; padding: 0.7rem 0.9rem; border-top: 1px solid var(--border-color); flex-shrink: 0; }
         .chat-input-row .form-input { flex: 1; min-width: 0; }
 

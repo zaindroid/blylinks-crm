@@ -77,6 +77,19 @@ describe('SaleSubmissionModal', () => {
     expect(campaignInput).toBeDisabled();
   });
 
+  it('has a Closer Name field at the bottom of the form, which is forwarded on submit', async () => {
+    const onSubmitSale = vi.fn();
+    const user = userEvent.setup();
+    renderModal({ onSubmitSale });
+
+    await user.type(screen.getByPlaceholderText(/johnathan sterling/i), 'Jane Doe');
+    await user.type(screen.getByPlaceholderText(/\+1 \(555\) 000-0000/i), '5551234567');
+    await user.type(screen.getByPlaceholderText(/name of the agent\/rep who closed this sale/i), 'Hammad Arshad');
+    await user.click(screen.getByRole('button', { name: /submit order/i }));
+
+    expect(onSubmitSale.mock.calls[0][0].closerName).toBe('Hammad Arshad');
+  });
+
   it('resets the form after a successful submit', async () => {
     const user = userEvent.setup();
     renderModal();

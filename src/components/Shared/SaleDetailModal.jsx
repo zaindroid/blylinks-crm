@@ -49,6 +49,7 @@ export default function SaleDetailModal({ sale, onClose }) {
             <Field label="Supplier Name" value={sale.supplierName} />
             <Field label="Confirmation Number" value={sale.confirmationNumber} />
             <Field label="Amount" value={formatPKR(sale.amount)} />
+            <Field label="Closer Name" value={sale.closerName} />
           </div>
 
           <div className="sale-detail-section-title">Electric</div>

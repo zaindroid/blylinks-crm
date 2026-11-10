@@ -27,6 +27,10 @@ const setup = (logs, props = {}) => render(
   <AdminAttendance attendanceLogs={logs} users={USERS} onUpdateAttendance={vi.fn()} {...props} />
 );
 
+// The attendance page now opens on the Calendar view by default; these tests exercise the List
+// view's filters/table specifically, so each one switches to it first.
+const switchToList = async (user) => user.click(screen.getByRole('button', { name: /^list$/i }));
+
 describe('AdminAttendance filters', () => {
   it('filters by agent (existing behaviour, still works)', async () => {
     const user = userEvent.setup();
@@ -34,6 +38,7 @@ describe('AdminAttendance filters', () => {
       log({ id: 'L1', agentId: 'a1', agentName: 'Ayesha Khan' }),
       log({ id: 'L2', agentId: 'a2', agentName: 'Bilal Raza' })
     ]);
+    await switchToList(user);
     await user.selectOptions(screen.getByLabelText(/filter by agent/i), 'a2');
     // scoped to the table: the dropdown itself always lists both names as <option>s
     const table = screen.getByRole('table');
@@ -47,6 +52,7 @@ describe('AdminAttendance filters', () => {
       log({ id: 'L1', date: TODAY }),
       log({ id: 'L2', date: YESTERDAY })
     ]);
+    await switchToList(user);
     await user.selectOptions(screen.getByDisplayValue(/all time/i), 'Today');
     expect(screen.getByText(TODAY)).toBeInTheDocument();
     expect(screen.queryByText(YESTERDAY)).not.toBeInTheDocument();
@@ -59,6 +65,7 @@ describe('AdminAttendance filters', () => {
       log({ id: 'L2', date: '2026-08-10' }),
       log({ id: 'L3', date: '2026-08-20' })
     ]);
+    await switchToList(user);
     await user.selectOptions(screen.getByDisplayValue(/all time/i), 'Custom');
     const from = screen.getByLabelText(/from date/i);
     const to = screen.getByLabelText(/to date/i);
@@ -79,6 +86,7 @@ describe('AdminAttendance filters', () => {
       log({ id: 'L2', agentId: 'a2', agentName: 'Bilal Raza', date: TODAY }),  // wrong agent
       log({ id: 'L3', agentId: 'a1', agentName: 'Ayesha Khan', date: YESTERDAY }) // wrong date
     ]);
+    await switchToList(user);
     await user.selectOptions(screen.getByLabelText(/filter by agent/i), 'a1');
     await user.selectOptions(screen.getByDisplayValue(/all time/i), 'Today');
 
@@ -91,8 +99,37 @@ describe('AdminAttendance filters', () => {
   it('shows an empty-state message rather than a blank table when filters match nothing', async () => {
     const user = userEvent.setup();
     setup([log({ date: '2020-01-01' })]);
+    await switchToList(user);
     await user.selectOptions(screen.getByDisplayValue(/all time/i), 'Today');
     expect(screen.getByText(/no attendance records match the current filters/i)).toBeInTheDocument();
+  });
+});
+
+describe('AdminAttendance calendar view', () => {
+  it('opens on the Calendar view by default, with no stats shown while "All Agents" is selected', () => {
+    setup([log({})]);
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.queryByText('Working Days')).not.toBeInTheDocument();
+  });
+
+  it('selecting a single agent shows Working Days / Tardies / Absents for the displayed month', async () => {
+    const user = userEvent.setup();
+    const [y, m] = TODAY.split('-');
+    setup([
+      log({ id: 'L1', agentId: 'a1', date: `${y}-${m}-01`, status: 'Present', tardy: false }),
+      log({ id: 'L2', agentId: 'a1', date: `${y}-${m}-02`, status: 'Tardy', tardy: true })
+    ]);
+    await user.selectOptions(screen.getByLabelText(/filter by agent/i), 'a1');
+    expect(screen.getByText('Working Days')).toBeInTheDocument();
+    expect(screen.getByText('Tardies')).toBeInTheDocument();
+    expect(screen.getByText('Absents')).toBeInTheDocument();
+  });
+
+  it('switches back to the List view and shows the table again', async () => {
+    const user = userEvent.setup();
+    setup([log({})]);
+    await switchToList(user);
+    expect(screen.getByRole('table')).toBeInTheDocument();
   });
 });
 

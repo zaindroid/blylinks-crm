@@ -71,7 +71,8 @@ npx vitest run \
   server/test/13-payroll-math.test.js \
   server/test/14-dnc.test.js \
   server/test/15-knowledge-base.test.js \
-  server/test/16-ip-access.test.js
+  server/test/16-ip-access.test.js \
+  server/test/17-message-attachments.test.js
 REST_STATUS=$?
 
 if [ "$AUTH_STATUS" -ne 0 ] || [ "$REST_STATUS" -ne 0 ]; then

@@ -21,7 +21,8 @@ const FULL_ORDER = {
   gasAccountNumber: 'GAS-112233',
   confirmationNumber: 'CONF-5566',
   amount: 2500,
-  agentNotes: 'Verbal TPV confirmed.'
+  agentNotes: 'Verbal TPV confirmed.',
+  closerName: 'Hammad Arshad'
 };
 
 describe('sale submission', () => {
@@ -223,5 +224,59 @@ describe('PATCH /api/sales/:id -- Admin free-form edit', () => {
     const admin = await createAdmin();
     const res = await request(app).patch('/api/sales/SALE-9999').set('Authorization', `Bearer ${admin.token}`).send({ customerName: 'X' });
     expect(res.status).toBe(404);
+  });
+});
+
+describe('GET /api/sales/leaderboard', () => {
+  it('is visible to every role and ranks by this-month Approved sales, with no customer PII', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agentA = await createAgentViaApi(admin.token, [campaignId]);
+    const agentB = await createAgentViaApi(admin.token, [campaignId]);
+
+    // Agent A: 2 approved. Agent B: 1 approved, 1 pending (doesn't count), 1 rejected (doesn't count).
+    for (let i = 0; i < 2; i++) {
+      const sale = await request(app).post('/api/sales').set('Authorization', `Bearer ${agentA.token}`)
+        .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 100 });
+      await request(app).patch(`/api/sales/${sale.body.id}/approve`).set('Authorization', `Bearer ${admin.token}`).send({});
+    }
+    const saleB1 = await request(app).post('/api/sales').set('Authorization', `Bearer ${agentB.token}`)
+      .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 50 });
+    await request(app).patch(`/api/sales/${saleB1.body.id}/approve`).set('Authorization', `Bearer ${admin.token}`).send({});
+    await request(app).post('/api/sales').set('Authorization', `Bearer ${agentB.token}`)
+      .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 50 }); // Pending, excluded
+    const saleB3 = await request(app).post('/api/sales').set('Authorization', `Bearer ${agentB.token}`)
+      .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 50 });
+    await request(app).patch(`/api/sales/${saleB3.body.id}/reject`).set('Authorization', `Bearer ${admin.token}`).send({}); // Rejected, excluded
+
+    // The Agent token itself proves "every role" -- an Agent can only ever GET their own sales,
+    // but this endpoint is a different thing entirely and must not 403 them.
+    const res = await request(app).get('/api/sales/leaderboard').set('Authorization', `Bearer ${agentA.token}`);
+    expect(res.status).toBe(200);
+
+    const rowA = res.body.find(r => r.agentId === agentA.id);
+    const rowB = res.body.find(r => r.agentId === agentB.id);
+    expect(rowA.approvedCount).toBe(2);
+    expect(rowA.monthApprovedCount).toBe(2);
+    expect(rowB.approvedCount).toBe(1);
+    expect(rowB.monthApprovedCount).toBe(1);
+    expect(res.body.indexOf(rowA)).toBeLessThan(res.body.indexOf(rowB)); // ranked, A ahead of B
+
+    // No customer name/phone/address anywhere in the payload -- aggregate counts only.
+    expect(JSON.stringify(res.body)).not.toContain('5551234567');
+    expect(Object.keys(rowA).sort()).toEqual(['agentId', 'agentName', 'approvedCount', 'approvedRevenuePkr', 'monthApprovedCount'].sort());
+  });
+
+  it('excludes a deactivated agent', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+    const sale = await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 100 });
+    await request(app).patch(`/api/sales/${sale.body.id}/approve`).set('Authorization', `Bearer ${admin.token}`).send({});
+    await request(app).delete(`/api/users/${agent.id}`).set('Authorization', `Bearer ${admin.token}`);
+
+    const res = await request(app).get('/api/sales/leaderboard').set('Authorization', `Bearer ${admin.token}`);
+    expect(res.body.find(r => r.agentId === agent.id)).toBeUndefined();
   });
 });

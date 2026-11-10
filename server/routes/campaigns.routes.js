@@ -202,4 +202,33 @@ router.patch('/:id/toggle-status', requireRole('Admin'), asyncHandler(async (req
   res.json(await listCampaigns());
 }));
 
+// Permanent, irreversible: unlike toggle-status (which just hides a campaign from new work),
+// this erases the campaign AND every sale, lead and callback ever recorded against it -- across
+// every agent who worked it, not just one. campaign_access and dnc_numbers cascade automatically
+// (ON DELETE CASCADE); sales/leads/callbacks don't, so they're deleted explicitly first. Payroll
+// is untouched -- it has no campaign_id, so commission already paid out is unaffected.
+router.delete('/:id/permanent', requireRole('Admin'), asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const { rows: [existing] } = await pool.query('SELECT id FROM campaigns WHERE id = $1', [id]);
+  if (!existing) return res.status(404).json({ error: 'Campaign not found' });
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM sales WHERE campaign_id = $1', [id]);
+    await client.query('DELETE FROM callbacks WHERE campaign_id = $1', [id]);
+    await client.query('DELETE FROM leads WHERE campaign_id = $1', [id]);
+    // campaign_access and dnc_numbers both have ON DELETE CASCADE on this column already.
+    await client.query('DELETE FROM campaigns WHERE id = $1', [id]);
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  res.json({ status: 'deleted', id });
+}));
+
 module.exports = router;

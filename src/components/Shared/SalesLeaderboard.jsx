@@ -1,32 +1,39 @@
-import React, { useMemo, useState } from 'react';
-import { filterByDateRange } from '../../utils/dateFilters';
+import React, { useEffect, useState } from 'react';
+import { fetchLeaderboard } from '../../api/sales';
 import { formatPKR } from '../../utils/currency';
 
 const RANK_STYLES = ['gold', 'silver', 'bronze'];
 
-export default function SalesLeaderboard({ sales, campaignId }) {
-  const [scope, setScope] = useState('Today');
+// Org-wide, every role sees the same board -- a Supervisor/Agent's own `sales` list is already
+// scoped server-side to their own campaign/their own deals, so ranking off it client-side could
+// never show real peers. This instead calls GET /api/sales/leaderboard, which returns only
+// agent name + aggregate counts/revenue (no customer PII), safe to show to anyone logged in.
+export default function SalesLeaderboard({ currentUser }) {
+  const [rows, setRows] = useState(null); // null = loading
+  const [error, setError] = useState('');
+  const [scope, setScope] = useState('This Month');
 
-  const ranked = useMemo(() => {
-    const scoped = campaignId ? sales.filter(s => s.campaignId === campaignId) : sales;
-    const approved = scoped.filter(s => s.status === 'Approved');
-    const inRange = filterByDateRange(approved, 'saleDateIso', scope);
+  useEffect(() => {
+    let cancelled = false;
+    fetchLeaderboard()
+      .then(data => { if (!cancelled) setRows(data); })
+      .catch(err => { if (!cancelled) setError(err.message || 'Could not load the leaderboard.'); });
+    return () => { cancelled = true; };
+  }, []);
 
-    const byAgent = {};
-    for (const s of inRange) {
-      if (!byAgent[s.agentId]) byAgent[s.agentId] = { agentId: s.agentId, agentName: s.agentName, revenue: 0, count: 0 };
-      byAgent[s.agentId].revenue += Number(s.amount);
-      byAgent[s.agentId].count += 1;
-    }
-    return Object.values(byAgent).sort((a, b) => b.revenue - a.revenue).slice(0, 8);
-  }, [sales, campaignId, scope]);
+  const countOf = (r) => (scope === 'This Month' ? r.monthApprovedCount : r.approvedCount);
+  const ranked = (rows || [])
+    .filter(r => countOf(r) > 0)
+    .slice()
+    .sort((a, b) => countOf(b) - countOf(a))
+    .slice(0, 8);
 
   return (
     <div className="card sales-leaderboard">
       <div className="card-header">
-        <span className="card-title">Sales Board</span>
+        <span className="card-title">Sales Board — by Number of Sales</span>
         <div className="leaderboard-scope-toggle">
-          {['Today', 'This Month'].map(s => (
+          {['This Month', 'All Time'].map(s => (
             <button
               key={s}
               className={`leaderboard-scope-btn ${scope === s ? 'active' : ''}`}
@@ -38,19 +45,23 @@ export default function SalesLeaderboard({ sales, campaignId }) {
         </div>
       </div>
 
-      {ranked.length === 0 ? (
+      {error && <div className="leaderboard-empty">{error}</div>}
+      {!error && rows === null && <div className="leaderboard-empty">Loading…</div>}
+      {!error && rows !== null && ranked.length === 0 && (
         <div className="leaderboard-empty">No approved sales in this period yet.</div>
-      ) : (
+      )}
+
+      {!error && ranked.length > 0 && (
         <div className="leaderboard-list">
           {ranked.map((row, idx) => (
-            <div key={row.agentId} className="leaderboard-row">
+            <div key={row.agentId} className={`leaderboard-row ${currentUser && row.agentId === currentUser.id ? 'leaderboard-row-me' : ''}`}>
               <div className={`leaderboard-rank ${RANK_STYLES[idx] || ''}`}>
                 {idx + 1}
               </div>
-              <div className="leaderboard-name">{row.agentName}</div>
+              <div className="leaderboard-name">{row.agentName}{currentUser && row.agentId === currentUser.id ? ' (You)' : ''}</div>
               <div className="leaderboard-stats">
-                <span className="font-mono text-accent">{formatPKR(row.revenue)}</span>
-                <span className="leaderboard-count">{row.count} sale{row.count === 1 ? '' : 's'}</span>
+                <span className="leaderboard-count">{countOf(row)} sale{countOf(row) === 1 ? '' : 's'}</span>
+                <span className="font-mono text-accent">{formatPKR(row.approvedRevenuePkr)} all-time</span>
               </div>
             </div>
           ))}
@@ -65,13 +76,14 @@ export default function SalesLeaderboard({ sales, campaignId }) {
         .leaderboard-empty { font-size: 0.8rem; color: var(--text-subtle); padding: 0.75rem 0; text-align: center; }
         .leaderboard-list { display: flex; flex-direction: column; gap: 0.4rem; }
         .leaderboard-row { display: flex; align-items: center; gap: 0.6rem; padding: 0.45rem 0.6rem; background: var(--bg-primary); border: 1px solid var(--border-color); border-radius: var(--radius-sm); }
+        .leaderboard-row-me { border-color: var(--accent); }
         .leaderboard-rank { width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; border-radius: 50%; background: var(--bg-tertiary); color: var(--text-muted); flex-shrink: 0; }
         .leaderboard-rank.gold { background: #fef3c7; color: #b45309; }
         .leaderboard-rank.silver { background: #e5e7eb; color: #4b5563; }
         .leaderboard-rank.bronze { background: #fed7aa; color: #9a3412; }
         .leaderboard-name { flex: 1; font-size: 0.8rem; font-weight: 600; }
         .leaderboard-stats { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
-        .leaderboard-count { font-size: 0.65rem; color: var(--text-subtle); }
+        .leaderboard-count { font-size: 0.7rem; font-weight: 700; color: var(--text-blue, #2563eb); }
       `}</style>
     </div>
   );

@@ -4,6 +4,11 @@ export function fetchSales() {
   return apiFetch('/sales');
 }
 
+// Visible to every role. Aggregate counts/revenue only -- no customer PII.
+export function fetchLeaderboard() {
+  return apiFetch('/sales/leaderboard');
+}
+
 export function submitSale(sale) {
   return apiFetch('/sales', { method: 'POST', body: sale });
 }

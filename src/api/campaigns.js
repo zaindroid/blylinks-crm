@@ -15,3 +15,8 @@ export function updateCampaign(id, updates) {
 export function toggleCampaignStatus(id) {
   return apiFetch(`/campaigns/${id}/toggle-status`, { method: 'PATCH' });
 }
+
+// Admin only. Irreversible: also erases every sale, lead and callback tied to this campaign.
+export function deleteCampaignPermanently(id) {
+  return apiFetch(`/campaigns/${id}/permanent`, { method: 'DELETE' });
+}

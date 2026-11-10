@@ -45,6 +45,10 @@ function buildApp() {
   // anonymous caller can never make the server buffer a big body. The chunk size is what bounds this, not
   // the size of the uploaded file -- a file is as large as it likes as long as each part fits here.
   app.use('/api/dnc/bulk', requireAuth, blockIfMustChangePassword, express.json({ limit: '8mb' }));
+  // A shared file arrives as a base64 string in the JSON body -- a 5MB attachment (the cap enforced in
+  // messages.routes.js) inflates to ~6.7MB base64, more than the default 100kb limit. Same pattern as
+  // dnc/bulk above: only this route gets the larger limit, only for signed-in users.
+  app.use('/api/messages', requireAuth, blockIfMustChangePassword, express.json({ limit: '8mb' }));
   app.use(express.json());
   app.use(pinoHttp({ logger }));
 

@@ -21,7 +21,8 @@ const EMPTY_FORM = {
   gasAccountType: '',
   gasAccountNumber: '',
   confirmationNumber: '',
-  agentNotes: ''
+  agentNotes: '',
+  closerName: ''
 };
 
 function TextField({ label, field, formData, setFormData, required, type = 'text', placeholder }) {
@@ -154,6 +155,8 @@ export default function SaleSubmissionModal({
                 onChange={(e) => setFormData({ ...formData, agentNotes: e.target.value })}
               ></textarea>
             </div>
+
+            <TextField label="Closer Name" field="closerName" formData={formData} setFormData={setFormData} placeholder="Name of the agent/rep who closed this sale" />
           </div>
 
           <div className="modal-footer">

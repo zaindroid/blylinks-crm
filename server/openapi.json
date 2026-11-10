@@ -22,6 +22,8 @@
     },
     "/api/campaigns/{id}": { "patch": { "summary": "Update campaign details and reassign agents (Admin: any campaign, any agent; Supervisor: only a campaign they already have access to, and only agents they themselves share campaign access with -- assignedAgentIds only ever contains Agent-role users, never a Supervisor's own management-access row)", "responses": { "200": { "description": "OK" } } } },
     "/api/campaigns/{id}/toggle-status": { "patch": { "summary": "Toggle campaign active status (Admin)", "responses": { "200": { "description": "OK" } } } },
+    "/api/campaigns/{id}/permanent": { "delete": { "summary": "Permanently and irreversibly delete a campaign, Admin only. Also erases every sale, lead and callback recorded against it (campaign_access and DNC entries cascade automatically). Payroll is unaffected.", "responses": { "200": { "description": "OK" } } } },
+    "/api/sales/leaderboard": { "get": { "summary": "Org-wide sales leaderboard, visible to every role (Admin/Supervisor/Agent). Per active Agent: approvedCount/approvedRevenuePkr (all-time), monthApprovedCount (this calendar month, Asia/Karachi), ranked by monthApprovedCount. No customer PII or individual sale records.", "responses": { "200": { "description": "OK" } } } },
     "/api/sales": {
       "get": { "summary": "List sales (optional ?campaignId filter). Each sale includes full utility-order fields: address/apt/city/state/zipCode, phone2, supplierName, electric/gas utility+account+rate fields, confirmationNumber, and a raw saleDateIso for client-side date-range filtering.", "responses": { "200": { "description": "OK" } } },
       "post": { "summary": "Submit a sale/order (Agent). Required: campaignId, customerName, phone, amount. Accepts the full order-detail field set plus an optional saleDate.", "responses": { "201": { "description": "Created" } } }
@@ -62,9 +64,10 @@
     "/api/payroll/{id}": { "patch": { "summary": "Adjust bonus/deductions on a payroll record and recompute net salary (Admin)", "responses": { "200": { "description": "OK" } } } },
     "/api/payroll/{id}/toggle-payment": { "patch": { "summary": "Toggle payroll payment status (Admin)", "responses": { "200": { "description": "OK" } } } },
     "/api/messages": {
-      "get": { "summary": "List/poll messages. ?channel= scopes to one group or DM thread (403 if you're not a member/participant); omitted, returns every message across every group you belong to plus your own DM threads.", "responses": { "200": { "description": "OK" } } },
-      "post": { "summary": "Send a message. For a group channel you must be a member (403 otherwise). For a DM channel (id starts with 'dm:'), also pass recipientId; the server recomputes the expected channel id and rejects a mismatch.", "responses": { "201": { "description": "Created" } } }
+      "get": { "summary": "List/poll messages. ?channel= scopes to one group or DM thread (403 if you're not a member/participant); omitted, returns every message across every group you belong to plus your own DM threads. Attachment bytes are never included here -- only hasAttachment/fileName/fileType/fileSize metadata; fetch the file itself from /api/messages/{id}/attachment.", "responses": { "200": { "description": "OK" } } },
+      "post": { "summary": "Send a message. Body needs text, a file, or both: fileName + fileData (base64) + optional fileType to share a file, capped at 5MB. For a group channel you must be a member (403 otherwise). For a DM channel (id starts with 'dm:'), also pass recipientId; the server recomputes the expected channel id and rejects a mismatch.", "responses": { "201": { "description": "Created" } } }
     },
+    "/api/messages/{id}/attachment": { "get": { "summary": "Download a message's shared file. Same authorization as reading the message itself (must be a member/participant of its channel).", "responses": { "200": { "description": "OK" } } } },
     "/api/message-groups": {
       "get": { "summary": "List message groups. Default: only groups you belong to. ?all=true (Admin only): every group in the system, for management.", "responses": { "200": { "description": "OK" } } },
       "post": { "summary": "Create a message group (Admin: any members; Supervisor: self + Agents within own campaign scope). Body: { id, name, memberIds }", "responses": { "201": { "description": "Created" } } }

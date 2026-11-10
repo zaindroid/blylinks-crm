@@ -22,6 +22,7 @@ const setup = (currentUser, props = {}) => render(
     onAddProject={vi.fn()}
     onUpdateProject={vi.fn()}
     onToggleProjectStatus={vi.fn()}
+    onDeleteProjectPermanently={vi.fn().mockResolvedValue(undefined)}
     {...props}
   />
 );
@@ -67,5 +68,38 @@ describe('AdminProjects role-based access', () => {
     await user.click(screen.getByRole('button', { name: /edit \/ assign agents/i }));
     await user.click(screen.getByRole('button', { name: /save campaign settings/i }));
     expect(onUpdateProject).toHaveBeenCalledWith('camp_1', expect.objectContaining({ name: 'Solar', assignedAgentIds: ['a1'] }));
+  });
+});
+
+describe('AdminProjects permanent deletion', () => {
+  it('an Admin sees "Delete Permanently"', () => {
+    setup(ADMIN);
+    expect(screen.getByRole('button', { name: /delete permanently/i })).toBeInTheDocument();
+  });
+
+  it('a Supervisor does not see "Delete Permanently"', () => {
+    setup(SUPERVISOR);
+    expect(screen.queryByRole('button', { name: /delete permanently/i })).not.toBeInTheDocument();
+  });
+
+  it('the confirm button stays disabled until the campaign\'s exact name is typed, then calls onDeleteProjectPermanently', async () => {
+    const onDeleteProjectPermanently = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    setup(ADMIN, { onDeleteProjectPermanently });
+
+    await user.click(screen.getByRole('button', { name: /delete permanently/i }));
+    const confirmButton = screen.getByRole('button', { name: /^permanently delete$/i });
+    expect(confirmButton).toBeDisabled();
+
+    const input = screen.getByLabelText(/type/i);
+    await user.type(input, 'wrong name');
+    expect(confirmButton).toBeDisabled();
+
+    await user.clear(input);
+    await user.type(input, 'Solar');
+    expect(confirmButton).toBeEnabled();
+    await user.click(confirmButton);
+
+    expect(onDeleteProjectPermanently).toHaveBeenCalledWith('camp_1');
   });
 });

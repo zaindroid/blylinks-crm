@@ -1,9 +1,13 @@
 import React, { useState } from 'react';
-import { Briefcase, PlusCircle, CheckCircle, Edit3, Trash2, Users, ShieldCheck, X } from 'lucide-react';
+import { Briefcase, PlusCircle, CheckCircle, Edit3, Trash2, Users, ShieldCheck, X, AlertTriangle } from 'lucide-react';
 
-export default function AdminProjects({ currentUser, projects, users, onAddProject, onUpdateProject, onToggleProjectStatus }) {
+export default function AdminProjects({ currentUser, projects, users, onAddProject, onUpdateProject, onToggleProjectStatus, onDeleteProjectPermanently }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingProject, setEditingProject] = useState(null);
+  const [deletingProject, setDeletingProject] = useState(null);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+  const [deleting, setDeleting] = useState(false);
 
   const isAdmin = currentUser?.role === 'Admin';
   const ownCampaignIds = currentUser?.allowedCampaignIds || [];
@@ -75,6 +79,29 @@ export default function AdminProjects({ currentUser, projects, users, onAddProje
     setEditingProject(null);
   };
 
+  const openDeleteProject = (proj) => {
+    setDeletingProject(proj);
+    setDeleteConfirmText('');
+    setDeleteError('');
+  };
+
+  const handleConfirmDeleteProject = async () => {
+    if (deleteConfirmText !== deletingProject.name) {
+      setDeleteError('Name does not match. Type it exactly to confirm.');
+      return;
+    }
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await onDeleteProjectPermanently(deletingProject.id);
+      setDeletingProject(null);
+    } catch (err) {
+      setDeleteError(err.message || 'Could not delete this campaign.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   return (
     <div className="admin-projects-container">
       <div className="page-header">
@@ -133,6 +160,11 @@ export default function AdminProjects({ currentUser, projects, users, onAddProje
                     {p.status === 'Active' ? 'Deactivate' : 'Activate'}
                   </button>
                 )}
+                {isAdmin && (
+                  <button className="btn btn-danger btn-sm" onClick={() => openDeleteProject(p)} title="Permanently delete this campaign and all its records">
+                    <AlertTriangle size={13} /> Delete Permanently
+                  </button>
+                )}
               </div>
             </div>
           );
@@ -187,6 +219,47 @@ export default function AdminProjects({ currentUser, projects, users, onAddProje
                 <button type="submit" className="btn btn-primary"><CheckCircle size={15} /> Save Campaign Settings</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {deletingProject && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '440px' }}>
+            <div className="modal-header">
+              <span className="modal-title flex-align"><AlertTriangle size={16} className="text-danger" /> Permanently Delete {deletingProject.name}</span>
+              <button className="icon-btn" onClick={() => setDeletingProject(null)}><X size={18} /></button>
+            </div>
+            <div className="modal-body">
+              <div className="error-alert margin-bottom">
+                This cannot be undone. It permanently deletes the "{deletingProject.name}" campaign and ALL data recorded
+                against it: every sale (and the commission history that goes with it, across every agent who sold on it),
+                every lead, every callback and every DNC entry. Payroll already paid out is not affected.
+              </div>
+              <div className="form-group">
+                <label className="form-label" htmlFor="delete-project-confirm-input">Type <strong>{deletingProject.name}</strong> to confirm</label>
+                <input
+                  id="delete-project-confirm-input"
+                  type="text"
+                  className="form-input"
+                  value={deleteConfirmText}
+                  onChange={e => setDeleteConfirmText(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              {deleteError && <div className="error-alert margin-top">{deleteError}</div>}
+            </div>
+            <div className="modal-footer">
+              <button type="button" className="btn btn-secondary" onClick={() => setDeletingProject(null)}>Cancel</button>
+              <button
+                type="button"
+                className="btn btn-danger"
+                disabled={deleting || deleteConfirmText !== deletingProject.name}
+                onClick={handleConfirmDeleteProject}
+              >
+                {deleting ? 'Deleting…' : 'Permanently Delete'}
+              </button>
+            </div>
           </div>
         </div>
       )}

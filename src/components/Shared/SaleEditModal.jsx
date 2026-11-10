@@ -13,6 +13,7 @@ const TEXT_FIELDS = [
   ['zipCode', 'Zip Code'],
   ['supplierName', 'Supplier Name'],
   ['confirmationNumber', 'Confirmation Number'],
+  ['closerName', 'Closer Name'],
   ['electricUtility', 'Electric Utility'],
   ['electricAccountType', 'Electric Account Type'],
   ['electricAccountNumber', 'Electric Account Number'],
