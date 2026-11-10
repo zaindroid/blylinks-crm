@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { DollarSign, Printer, Clock, ShieldCheck, Eye, X, RefreshCw, Edit3, Wallet, Trash2 } from 'lucide-react';
 import { formatPKR } from '../../utils/currency';
 import { fetchAdvances, addAdvance, deleteAdvance } from '../../api/payroll';
@@ -13,6 +13,11 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
   // wrong (or current, still-incomplete) month by accident.
   const [generateMonth, setGenerateMonth] = useState('');
   const [generating, setGenerating] = useState(false);
+  // The table otherwise shows every payroll row ever generated, for every agent and every month,
+  // all mixed together -- after picking a month and calculating, that looked like the calculation
+  // itself had pulled in every month up to today instead of stopping at the one selected. Defaults
+  // to "All" so existing visibility doesn't change until Admin narrows it down.
+  const [monthFilter, setMonthFilter] = useState('All');
   const [adjustingFor, setAdjustingFor] = useState(null);
   const [adjustForm, setAdjustForm] = useState({ commissionPkr: '', bonusPkr: '', deductionsPkr: '', workingDays: '' });
   const [error, setError] = useState('');
@@ -34,6 +39,9 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
 
   useEffect(() => { loadAdvances(); }, [loadAdvances]);
 
+  const payrollMonths = useMemo(() => [...new Set(payroll.map(p => p.month))].sort().reverse(), [payroll]);
+  const visiblePayroll = monthFilter === 'All' ? payroll : payroll.filter(p => p.month === monthFilter);
+
   const totalPayrollPaidPkr = payroll.reduce((sum, p) => sum + (p.status === 'Paid' ? (p.netSalaryPkr || 0) : 0), 0);
   const totalPayrollPendingPkr = payroll.reduce((sum, p) => sum + (p.status === 'Pending' ? (p.netSalaryPkr || 0) : 0), 0);
   const totalOutstandingAdvances = advances.reduce((sum, a) => sum + a.outstandingPkr, 0);
@@ -54,6 +62,9 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
     setGenerating(true);
     try {
       await runPayrollAction(() => onGeneratePayroll(generateMonth));
+      // Jump the table straight to the month just calculated, so the result is what's immediately
+      // visible instead of buried among every other month's rows.
+      setMonthFilter(generateMonth);
     } finally {
       setGenerating(false);
     }
@@ -147,6 +158,14 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
 
       {error && <div className="error-alert margin-bottom" role="alert">{error}</div>}
 
+      <div className="filter-box margin-bottom">
+        <label className="form-label" htmlFor="payroll-month-filter">Filter by month:</label>
+        <select id="payroll-month-filter" className="form-select" value={monthFilter} onChange={(e) => setMonthFilter(e.target.value)}>
+          <option value="All">All Months</option>
+          {payrollMonths.map(m => <option key={m} value={m}>{m}</option>)}
+        </select>
+      </div>
+
       {/* KPI Cards */}
       <div className="kpi-grid margin-bottom">
         <div className="kpi-card">
@@ -189,9 +208,11 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
             </tr>
           </thead>
           <tbody>
-            {payroll.length === 0 ? (
-              <tr><td colSpan="13" style={{ textAlign: 'center', padding: '1.5rem' }}>No payroll calculated yet. Pick a month and press Calculate Payroll.</td></tr>
-            ) : payroll.map(p => {
+            {visiblePayroll.length === 0 ? (
+              <tr><td colSpan="13" style={{ textAlign: 'center', padding: '1.5rem' }}>
+                {payroll.length === 0 ? 'No payroll calculated yet. Pick a month and press Calculate Payroll.' : `No payroll for ${monthFilter} yet.`}
+              </td></tr>
+            ) : visiblePayroll.map(p => {
               const earned = Math.round((p.perDayPkr * p.workingDays) * 100) / 100;
               const isPaid = p.status === 'Paid';
               return (

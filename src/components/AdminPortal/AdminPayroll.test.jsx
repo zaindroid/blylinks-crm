@@ -132,3 +132,62 @@ describe('AdminPayroll', () => {
     await waitFor(() => expect(payrollApi.deleteAdvance).toHaveBeenCalledWith('adv_1'));
   });
 });
+
+describe('AdminPayroll month filter', () => {
+  const ROW_OCT = { ...ROW, id: 'pay_a1_2026-10', month: '2026-10', workingDays: 22 };
+  const ROW_NOV = { ...ROW, id: 'pay_a1_2026-11', month: '2026-11', workingDays: 5 };
+
+  // The page also renders a separate Advances table lower down (sharing the same agent name and
+  // the same `data-table` class), so queries must be scoped to the payroll table specifically --
+  // it's always the first table on the page.
+  const payrollRows = () => within(screen.getAllByRole('table')[0]).getAllByRole('row').slice(1);
+
+  it('defaults to showing every month, not just one', async () => {
+    setup({ payroll: [ROW_OCT, ROW_NOV] });
+    expect(screen.getByLabelText(/filter by month/i)).toHaveValue('All');
+    await screen.findByText('medical'); // advances have loaded, so the table counts below are settled
+    expect(payrollRows()).toHaveLength(2);
+  });
+
+  it('picking one month hides every other month\'s rows -- the selected month\'s own "today" never leaks other months in', async () => {
+    const user = userEvent.setup();
+    setup({ payroll: [ROW_OCT, ROW_NOV] });
+    await screen.findByText('medical');
+
+    await user.selectOptions(screen.getByLabelText(/filter by month/i), '2026-10');
+    const rows = payrollRows();
+    expect(rows).toHaveLength(1);
+    expect(within(rows[0]).getByText('22')).toBeInTheDocument(); // October's own days worked, not November's
+    expect(screen.queryByText(/no payroll for/i)).not.toBeInTheDocument();
+  });
+
+  it('shows a month-specific empty state when the filtered month has no rows yet', async () => {
+    const onGeneratePayroll = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    // onGeneratePayroll is mocked and never actually adds a 2026-11 row to the `payroll` prop, so
+    // jumping the filter to 2026-11 after "calculating" it lands on a month with no rows at all.
+    setup({ payroll: [ROW_OCT], onGeneratePayroll });
+
+    const monthInput = screen.getByLabelText(/^pay month$/i);
+    fireEvent.change(monthInput, { target: { value: '2026-11' } });
+    await user.click(screen.getByRole('button', { name: /calculate payroll/i }));
+
+    expect(await screen.findByText('No payroll for 2026-11 yet.')).toBeInTheDocument();
+  });
+
+  it('calculating payroll jumps the table straight to that month, instead of leaving it mixed in with every other month', async () => {
+    const onGeneratePayroll = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    setup({ payroll: [ROW_OCT, ROW_NOV], onGeneratePayroll });
+    await screen.findByText('medical');
+
+    const monthInput = screen.getByLabelText(/^pay month$/i);
+    fireEvent.change(monthInput, { target: { value: '2026-11' } });
+    await user.click(screen.getByRole('button', { name: /calculate payroll/i }));
+
+    await waitFor(() => expect(screen.getByLabelText(/filter by month/i)).toHaveValue('2026-11'));
+    const rows = payrollRows();
+    expect(rows).toHaveLength(1);
+    expect(within(rows[0]).getByText('5')).toBeInTheDocument(); // November's own days worked
+  });
+});

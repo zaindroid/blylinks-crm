@@ -228,26 +228,27 @@ describe('PATCH /api/sales/:id -- Admin free-form edit', () => {
 });
 
 describe('GET /api/sales/leaderboard', () => {
-  it('is visible to every role and ranks by this-month Approved sales, with no customer PII', async () => {
+  it('ranks by number of sales SUBMITTED (every status counts), not approved count or dollar amount -- with no customer PII', async () => {
     const admin = await createAdmin();
     const campaignId = await createCampaign(admin.token);
     const agentA = await createAgentViaApi(admin.token, [campaignId]);
     const agentB = await createAgentViaApi(admin.token, [campaignId]);
 
-    // Agent A: 2 approved. Agent B: 1 approved, 1 pending (doesn't count), 1 rejected (doesn't count).
+    // Agent A: 2 sales submitted, both Approved (high revenue, fewer submissions).
     for (let i = 0; i < 2; i++) {
       const sale = await request(app).post('/api/sales').set('Authorization', `Bearer ${agentA.token}`)
-        .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 100 });
+        .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 1000 });
       await request(app).patch(`/api/sales/${sale.body.id}/approve`).set('Authorization', `Bearer ${admin.token}`).send({});
     }
+    // Agent B: 3 sales submitted -- 1 Approved, 1 Pending, 1 Rejected (low revenue, more submissions).
     const saleB1 = await request(app).post('/api/sales').set('Authorization', `Bearer ${agentB.token}`)
       .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 50 });
     await request(app).patch(`/api/sales/${saleB1.body.id}/approve`).set('Authorization', `Bearer ${admin.token}`).send({});
     await request(app).post('/api/sales').set('Authorization', `Bearer ${agentB.token}`)
-      .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 50 }); // Pending, excluded
+      .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 50 }); // Pending -- still counts as submitted
     const saleB3 = await request(app).post('/api/sales').set('Authorization', `Bearer ${agentB.token}`)
       .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 50 });
-    await request(app).patch(`/api/sales/${saleB3.body.id}/reject`).set('Authorization', `Bearer ${admin.token}`).send({}); // Rejected, excluded
+    await request(app).patch(`/api/sales/${saleB3.body.id}/reject`).set('Authorization', `Bearer ${admin.token}`).send({}); // Rejected -- still counts as submitted
 
     // The Agent token itself proves "every role" -- an Agent can only ever GET their own sales,
     // but this endpoint is a different thing entirely and must not 403 them.
@@ -256,15 +257,18 @@ describe('GET /api/sales/leaderboard', () => {
 
     const rowA = res.body.find(r => r.agentId === agentA.id);
     const rowB = res.body.find(r => r.agentId === agentB.id);
-    expect(rowA.approvedCount).toBe(2);
-    expect(rowA.monthApprovedCount).toBe(2);
-    expect(rowB.approvedCount).toBe(1);
-    expect(rowB.monthApprovedCount).toBe(1);
-    expect(res.body.indexOf(rowA)).toBeLessThan(res.body.indexOf(rowB)); // ranked, A ahead of B
+    expect(rowA.submittedCount).toBe(2);
+    expect(rowA.monthSubmittedCount).toBe(2);
+    expect(rowA.approvedRevenuePkr).toBe(2000);
+    expect(rowB.submittedCount).toBe(3);
+    expect(rowB.monthSubmittedCount).toBe(3);
+    expect(rowB.approvedRevenuePkr).toBe(50);
+    // B submitted more (3 vs 2) despite far less approved revenue (50 vs 2000) -- B ranks ahead.
+    expect(res.body.indexOf(rowB)).toBeLessThan(res.body.indexOf(rowA));
 
     // No customer name/phone/address anywhere in the payload -- aggregate counts only.
     expect(JSON.stringify(res.body)).not.toContain('5551234567');
-    expect(Object.keys(rowA).sort()).toEqual(['agentId', 'agentName', 'approvedCount', 'approvedRevenuePkr', 'monthApprovedCount'].sort());
+    expect(Object.keys(rowA).sort()).toEqual(['agentId', 'agentName', 'approvedRevenuePkr', 'monthSubmittedCount', 'submittedCount'].sort());
   });
 
   it('excludes a deactivated agent', async () => {

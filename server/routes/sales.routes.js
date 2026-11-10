@@ -58,29 +58,29 @@ function reshapeSale(row) {
 
 // Visible to every role -- unlike the rest of this file, this exposes no customer PII or
 // individual sale records, only an agent's own name plus aggregate counts/revenue, which is
-// safe to show org-wide as a friendly leaderboard. Ranked by this calendar month's Approved
-// sales (a "sale" here means a confirmed one, same convention campaigns.routes.js's
-// total_sales_count/month_sales_count already use); all-time count/revenue ride along as context.
+// safe to show org-wide as a friendly leaderboard. Ranked by number of sales SUBMITTED (every
+// status counts -- Pending/Approved/Rejected alike; this measures submission activity, not
+// closed deals), for this calendar month; all-time count and approved revenue ride along as
+// context only, never as the ranking itself.
 router.get('/leaderboard', asyncHandler(async (req, res) => {
   const { rows } = await pool.query(`
     SELECT u.id AS agent_id, u.name AS agent_name,
-      COUNT(*) FILTER (WHERE s.status = 'Approved') AS approved_count,
-      COUNT(*) FILTER (
-        WHERE s.status = 'Approved'
-          AND date_trunc('month', s.sale_date AT TIME ZONE 'Asia/Karachi') = date_trunc('month', now() AT TIME ZONE 'Asia/Karachi')
-      ) AS month_approved_count,
+      COUNT(s.id) AS submitted_count,
+      COUNT(s.id) FILTER (
+        WHERE date_trunc('month', s.sale_date AT TIME ZONE 'Asia/Karachi') = date_trunc('month', now() AT TIME ZONE 'Asia/Karachi')
+      ) AS month_submitted_count,
       COALESCE(SUM(s.amount) FILTER (WHERE s.status = 'Approved'), 0) AS approved_revenue_pkr
     FROM users u
     LEFT JOIN sales s ON s.agent_id = u.id
     WHERE u.role = 'Agent' AND u.status = 'Active'
     GROUP BY u.id, u.name
-    ORDER BY month_approved_count DESC, approved_count DESC, u.name ASC
+    ORDER BY month_submitted_count DESC, submitted_count DESC, u.name ASC
   `);
   res.json(rows.map(r => ({
     agentId: r.agent_id,
     agentName: r.agent_name,
-    approvedCount: Number(r.approved_count),
-    monthApprovedCount: Number(r.month_approved_count),
+    submittedCount: Number(r.submitted_count),
+    monthSubmittedCount: Number(r.month_submitted_count),
     approvedRevenuePkr: Number(r.approved_revenue_pkr)
   })));
 }));

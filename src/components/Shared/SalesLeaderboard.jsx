@@ -21,7 +21,7 @@ export default function SalesLeaderboard({ currentUser }) {
     return () => { cancelled = true; };
   }, []);
 
-  const countOf = (r) => (scope === 'This Month' ? r.monthApprovedCount : r.approvedCount);
+  const countOf = (r) => (scope === 'This Month' ? r.monthSubmittedCount : r.submittedCount);
   const ranked = (rows || [])
     .filter(r => countOf(r) > 0)
     .slice()
@@ -31,7 +31,7 @@ export default function SalesLeaderboard({ currentUser }) {
   return (
     <div className="card sales-leaderboard">
       <div className="card-header">
-        <span className="card-title">Sales Board — by Number of Sales</span>
+        <span className="card-title">Sales Board — by Number of Sales Submitted</span>
         <div className="leaderboard-scope-toggle">
           {['This Month', 'All Time'].map(s => (
             <button
@@ -48,7 +48,7 @@ export default function SalesLeaderboard({ currentUser }) {
       {error && <div className="leaderboard-empty">{error}</div>}
       {!error && rows === null && <div className="leaderboard-empty">Loading…</div>}
       {!error && rows !== null && ranked.length === 0 && (
-        <div className="leaderboard-empty">No approved sales in this period yet.</div>
+        <div className="leaderboard-empty">No sales submitted in this period yet.</div>
       )}
 
       {!error && ranked.length > 0 && (
@@ -60,8 +60,8 @@ export default function SalesLeaderboard({ currentUser }) {
               </div>
               <div className="leaderboard-name">{row.agentName}{currentUser && row.agentId === currentUser.id ? ' (You)' : ''}</div>
               <div className="leaderboard-stats">
-                <span className="leaderboard-count">{countOf(row)} sale{countOf(row) === 1 ? '' : 's'}</span>
-                <span className="font-mono text-accent">{formatPKR(row.approvedRevenuePkr)} all-time</span>
+                <span className="leaderboard-count">{countOf(row)} submitted</span>
+                <span className="font-mono text-accent">{formatPKR(row.approvedRevenuePkr)} approved, all-time</span>
               </div>
             </div>
           ))}
