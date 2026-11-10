@@ -6,13 +6,18 @@ import { fetchAdvances, addAdvance, deleteAdvance } from '../../api/payroll';
 const today = () => new Date().toISOString().slice(0, 10);
 const EMPTY_ADVANCE = { agentId: '', amountPkr: '', givenOn: '', note: '' };
 
-export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatus, onGeneratePayroll, onUpdatePayrollAdjustments }) {
+export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatus, onGeneratePayroll, onGenerateCustomPayroll, onUpdatePayrollAdjustments }) {
   const [selectedPayslip, setSelectedPayslip] = useState(null);
   // Deliberately blank, not defaulted to the current month -- Admin must explicitly pick the
   // month being paid before anything can be calculated, so payroll is never generated for the
   // wrong (or current, still-incomplete) month by accident.
   const [generateMonth, setGenerateMonth] = useState('');
   const [generating, setGenerating] = useState(false);
+  // 'month' (the normal case: one whole calendar month, every active Agent) vs 'custom' (one
+  // Agent, an arbitrary date range -- e.g. a new hire who joined mid-month).
+  const [genMode, setGenMode] = useState('month');
+  const [customForm, setCustomForm] = useState({ agentId: '', periodStart: '', periodEnd: '' });
+  const [customGenerating, setCustomGenerating] = useState(false);
   // The table otherwise shows every payroll row ever generated, for every agent and every month,
   // all mixed together -- after picking a month and calculating, that looked like the calculation
   // itself had pulled in every month up to today instead of stopping at the one selected. Defaults
@@ -67,6 +72,27 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
       setMonthFilter(generateMonth);
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const handleGenerateCustom = async (e) => {
+    e.preventDefault();
+    const { agentId, periodStart, periodEnd } = customForm;
+    if (!agentId || !periodStart || !periodEnd) {
+      setError('Pick an agent and both dates first.');
+      return;
+    }
+    if (periodEnd < periodStart) {
+      setError('The end date cannot be before the start date.');
+      return;
+    }
+    setCustomGenerating(true);
+    try {
+      await runPayrollAction(() => onGenerateCustomPayroll({ agentId, periodStart, periodEnd }));
+      // Same label the server generates for a custom range -- jump straight to the new result.
+      setMonthFilter(`${periodStart}_to_${periodEnd}`);
+    } finally {
+      setCustomGenerating(false);
     }
   };
 
@@ -140,20 +166,66 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
             deducted automatically. Add commission, bonus or other deductions with Adjust before paying.
           </p>
         </div>
-        <div className="page-header-actions">
-          <input
-            type="month"
-            className="form-input"
-            style={{ width: '160px' }}
-            value={generateMonth}
-            onChange={(e) => setGenerateMonth(e.target.value)}
-            aria-label="Pay month"
-            placeholder="Select a month"
-          />
-          <button className="btn btn-primary" onClick={handleGenerate} disabled={generating || !generateMonth} title={!generateMonth ? 'Select a month first' : undefined}>
-            <RefreshCw size={15} /> {generating ? 'Calculating…' : 'Calculate Payroll'}
+      </div>
+
+      <div className="card margin-bottom">
+        <div className="payroll-generate-mode-toggle margin-bottom">
+          <button type="button" className={`btn btn-sm ${genMode === 'month' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setGenMode('month')}>
+            Whole Month
+          </button>
+          <button type="button" className={`btn btn-sm ${genMode === 'custom' ? 'btn-primary' : 'btn-secondary'}`} onClick={() => setGenMode('custom')}>
+            Custom Range
           </button>
         </div>
+
+        {genMode === 'month' ? (
+          <div className="payroll-generate-row">
+            <span className="text-xs text-subtle">Calculates every active agent for the whole month.</span>
+            <input
+              type="month"
+              className="form-input"
+              style={{ width: '160px' }}
+              value={generateMonth}
+              onChange={(e) => setGenerateMonth(e.target.value)}
+              aria-label="Pay month"
+              placeholder="Select a month"
+            />
+            <button className="btn btn-primary" onClick={handleGenerate} disabled={generating || !generateMonth} title={!generateMonth ? 'Select a month first' : undefined}>
+              <RefreshCw size={15} /> {generating ? 'Calculating…' : 'Calculate Payroll'}
+            </button>
+          </div>
+        ) : (
+          <form className="payroll-generate-row" onSubmit={handleGenerateCustom}>
+            <span className="text-xs text-subtle">Calculates one agent over any date range -- e.g. a new hire who joined mid-month.</span>
+            <select
+              className="form-select"
+              aria-label="Agent for custom payroll period"
+              value={customForm.agentId}
+              onChange={(e) => setCustomForm({ ...customForm, agentId: e.target.value })}
+            >
+              <option value="">Select agent…</option>
+              {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+            <input
+              type="date"
+              className="form-input"
+              aria-label="Period start"
+              value={customForm.periodStart}
+              onChange={(e) => setCustomForm({ ...customForm, periodStart: e.target.value })}
+            />
+            <span className="text-muted text-sm">to</span>
+            <input
+              type="date"
+              className="form-input"
+              aria-label="Period end"
+              value={customForm.periodEnd}
+              onChange={(e) => setCustomForm({ ...customForm, periodEnd: e.target.value })}
+            />
+            <button type="submit" className="btn btn-primary" disabled={customGenerating}>
+              <RefreshCw size={15} /> {customGenerating ? 'Calculating…' : 'Calculate for Agent'}
+            </button>
+          </form>
+        )}
       </div>
 
       {error && <div className="error-alert margin-bottom" role="alert">{error}</div>}
@@ -436,6 +508,8 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
       )}
 
       <style>{`
+        .payroll-generate-mode-toggle { display: flex; gap: 0.5rem; }
+        .payroll-generate-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
         .payslip-header-brand { display: flex; justify-content: space-between; border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; }
         .text-right { text-align: right; }
         .payslip-agent-info { background: var(--bg-primary); padding: 0.85rem; border-radius: var(--radius-sm); border: 1px solid var(--border-color); }

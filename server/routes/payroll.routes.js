@@ -7,8 +7,14 @@ const { computePayroll, allocateRecovery, TARDIES_PER_PENALTY_WEEK } = require('
 
 const router = express.Router();
 
+// period_start/period_end are read as text (to_char), not the raw DATE value: pg parses a DATE
+// column into a JS Date at *server-local* midnight, and .toISOString() converts to UTC -- which
+// silently shifts the date back a day whenever the server's local timezone is ahead of UTC. Same
+// class of bug, same fix, as log_date_text in attendance.routes.js.
 const SELECT_PAYROLL = `
-  SELECT p.*, u.name AS agent_name
+  SELECT p.*, u.name AS agent_name,
+         to_char(p.period_start, 'YYYY-MM-DD') AS period_start_text,
+         to_char(p.period_end, 'YYYY-MM-DD') AS period_end_text
   FROM payroll p
   JOIN users u ON u.id = p.agent_id
 `;
@@ -19,6 +25,8 @@ function reshape(row) {
     agentId: row.agent_id,
     agentName: row.agent_name,
     month: row.month,
+    periodStart: row.period_start_text,
+    periodEnd: row.period_end_text,
     baseSalaryPkr: Number(row.base_salary_pkr),
     workingDays: Number(row.working_days),
     perDayPkr: Number(row.per_day_pkr),
@@ -44,48 +52,50 @@ function parseMoney(value) {
 // ---- facts derived from attendance and advances ------------------------------------------------
 
 // Days actually worked = distinct days with a clock-in. A "penalty week" is a Monday-Sunday week
-// (Pakistan calendar dates) with 3+ distinct tardy days; a week straddling two months only counts
-// the tardy days that fall inside the month being paid.
-async function attendanceFacts(db, agentId, month) {
+// (Pakistan calendar dates) with 3+ distinct tardy days; a week straddling the period boundary only
+// counts the tardy days that fall inside periodStart..periodEnd. Works identically for a whole
+// calendar month or an arbitrary custom range -- both are just a date range to this function.
+async function attendanceFacts(db, agentId, periodStart, periodEnd) {
   const { rows: [days] } = await db.query(
     `SELECT COUNT(DISTINCT log_date)::int AS n FROM attendance_logs
-     WHERE agent_id = $1 AND to_char(log_date, 'YYYY-MM') = $2`,
-    [agentId, month]
+     WHERE agent_id = $1 AND log_date BETWEEN $2 AND $3`,
+    [agentId, periodStart, periodEnd]
   );
   const { rows: [weeks] } = await db.query(
     `SELECT COUNT(*)::int AS n FROM (
        SELECT 1 FROM attendance_logs
-       WHERE agent_id = $1 AND tardy AND to_char(log_date, 'YYYY-MM') = $2
+       WHERE agent_id = $1 AND tardy AND log_date BETWEEN $2 AND $3
        GROUP BY date_trunc('week', log_date)
-       HAVING COUNT(DISTINCT log_date) >= $3
+       HAVING COUNT(DISTINCT log_date) >= $4
      ) w`,
-    [agentId, month, TARDIES_PER_PENALTY_WEEK]
+    [agentId, periodStart, periodEnd, TARDIES_PER_PENALTY_WEEK]
   );
   return { workingDays: days.n, tardyWeeks: weeks.n };
 }
 
-// Advances given on or before the end of the month that still have an unrecovered balance,
+// Advances given on or before the end of the pay period that still have an unrecovered balance,
 // oldest first. Recoveries only exist for payrolls already marked Paid.
-async function outstandingAdvances(db, agentId, month) {
+async function outstandingAdvances(db, agentId, periodEnd) {
   const { rows } = await db.query(
     `SELECT a.id, a.amount - COALESCE(SUM(r.amount), 0) AS outstanding
      FROM salary_advances a
      LEFT JOIN salary_advance_recoveries r ON r.advance_id = a.id
-     WHERE a.agent_id = $1
-       AND a.given_on <= (date_trunc('month', ($2 || '-01')::date) + interval '1 month' - interval '1 day')::date
+     WHERE a.agent_id = $1 AND a.given_on <= $2
      GROUP BY a.id, a.amount, a.given_on, a.created_at
      HAVING a.amount - COALESCE(SUM(r.amount), 0) > 0
      ORDER BY a.given_on ASC, a.created_at ASC`,
-    [agentId, month]
+    [agentId, periodEnd]
   );
   return rows.map(r => ({ id: r.id, outstanding: Number(r.outstanding) }));
 }
 
 // Recomputes and stores one payroll row. `manual` are the Admin-entered figures; `workingDays` and
-// the tardy count come from attendance unless the Admin explicitly overrides working days.
-async function calculateAndStore(db, { agentId, month, baseSalary, manual, workingDaysOverride }) {
-  const facts = await attendanceFacts(db, agentId, month);
-  const advances = await outstandingAdvances(db, agentId, month);
+// the tardy count come from attendance unless the Admin explicitly overrides working days. `month`
+// is just this row's identity/display label -- a real 'YYYY-MM' for a whole-month generation, or a
+// custom-range label -- the actual period worked is always periodStart/periodEnd.
+async function calculateAndStore(db, { agentId, month, periodStart, periodEnd, baseSalary, manual, workingDaysOverride }) {
+  const facts = await attendanceFacts(db, agentId, periodStart, periodEnd);
+  const advances = await outstandingAdvances(db, agentId, periodEnd);
   const workingDays = workingDaysOverride ?? facts.workingDays;
 
   const result = computePayroll({
@@ -100,18 +110,40 @@ async function calculateAndStore(db, { agentId, month, baseSalary, manual, worki
 
   const id = `pay_${agentId}_${month}`;
   await db.query(
-    `INSERT INTO payroll (id, agent_id, month, base_salary_pkr, working_days, per_day_pkr, commission_pkr, bonus_pkr,
-                          tardy_weeks, tardy_deduction_pkr, advance_deduction_pkr, deductions_pkr, net_salary_pkr, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'Pending')
+    `INSERT INTO payroll (id, agent_id, month, period_start, period_end, base_salary_pkr, working_days, per_day_pkr,
+                          commission_pkr, bonus_pkr, tardy_weeks, tardy_deduction_pkr, advance_deduction_pkr,
+                          deductions_pkr, net_salary_pkr, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'Pending')
      ON CONFLICT (agent_id, month) DO UPDATE SET
+       period_start = EXCLUDED.period_start, period_end = EXCLUDED.period_end,
        base_salary_pkr = EXCLUDED.base_salary_pkr, working_days = EXCLUDED.working_days, per_day_pkr = EXCLUDED.per_day_pkr,
        commission_pkr = EXCLUDED.commission_pkr, bonus_pkr = EXCLUDED.bonus_pkr, tardy_weeks = EXCLUDED.tardy_weeks,
        tardy_deduction_pkr = EXCLUDED.tardy_deduction_pkr, advance_deduction_pkr = EXCLUDED.advance_deduction_pkr,
        deductions_pkr = EXCLUDED.deductions_pkr, net_salary_pkr = EXCLUDED.net_salary_pkr`,
-    [id, agentId, month, baseSalary, workingDays, result.perDay, manual.commission, manual.bonus,
+    [id, agentId, month, periodStart, periodEnd, baseSalary, workingDays, result.perDay, manual.commission, manual.bonus,
       facts.tardyWeeks, result.tardyDeduction, result.advanceDeduction, manual.deductions, result.net]
   );
   return { id, advances, result };
+}
+
+function lastDayOfMonth(month) {
+  const [y, m] = month.split('-').map(Number);
+  return new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10);
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Any existing payroll period for this agent that shares a day with [periodStart, periodEnd] --
+// standard range-overlap test (existing.start <= new.end AND existing.end >= new.start). Excludes
+// `excludeId` so re-generating the exact same period (same id) is never flagged against itself.
+async function findOverlappingPeriod(db, agentId, periodStart, periodEnd, excludeId) {
+  const { rows } = await db.query(
+    `SELECT id, month, to_char(period_start, 'YYYY-MM-DD') AS period_start_text, to_char(period_end, 'YYYY-MM-DD') AS period_end_text
+     FROM payroll
+     WHERE agent_id = $1 AND id <> $2 AND period_start <= $4 AND period_end >= $3`,
+    [agentId, excludeId, periodStart, periodEnd]
+  );
+  return rows[0] || null;
 }
 
 // ---- payroll -----------------------------------------------------------------------------------
@@ -137,6 +169,8 @@ router.post('/generate', requireRole('Admin'), asyncHandler(async (req, res) => 
   if (!month || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
     return res.status(400).json({ error: 'month is required, in YYYY-MM format' });
   }
+  const periodStart = `${month}-01`;
+  const periodEnd = lastDayOfMonth(month);
 
   const { rows: agents } = await pool.query(
     `SELECT id, base_salary_pkr FROM users WHERE role = 'Agent' AND status = 'Active'`
@@ -155,6 +189,8 @@ router.post('/generate', requireRole('Admin'), asyncHandler(async (req, res) => 
       await calculateAndStore(client, {
         agentId: agent.id,
         month,
+        periodStart,
+        periodEnd,
         baseSalary: Number(agent.base_salary_pkr) || 0,
         // Commission/bonus/other deductions are the Admin's own entries; regenerating never wipes them.
         manual: {
@@ -174,6 +210,67 @@ router.post('/generate', requireRole('Admin'), asyncHandler(async (req, res) => 
 
   const { rows } = await pool.query(`${SELECT_PAYROLL} WHERE p.month = $1 ORDER BY p.id`, [month]);
   res.json(rows.map(reshape));
+}));
+
+// Generates/updates payroll for ONE agent over an arbitrary date range, instead of a whole calendar
+// month -- a new hire who joined mid-month, or any other partial period. Refuses if the range
+// overlaps a payroll period this agent already has (whole-month or another custom range): paying
+// the same attendance days twice is exactly the kind of mistake this guards against.
+router.post('/generate-custom', requireRole('Admin'), asyncHandler(async (req, res) => {
+  const { agentId, periodStart, periodEnd } = req.body;
+  if (!agentId || !DATE_RE.test(periodStart || '') || !DATE_RE.test(periodEnd || '')) {
+    return res.status(400).json({ error: 'agentId, periodStart and periodEnd (YYYY-MM-DD) are required' });
+  }
+  if (periodEnd < periodStart) {
+    return res.status(400).json({ error: 'periodEnd must not be before periodStart' });
+  }
+
+  const { rows: [agent] } = await pool.query(`SELECT id, base_salary_pkr FROM users WHERE id = $1 AND role = 'Agent'`, [agentId]);
+  if (!agent) return res.status(404).json({ error: 'Agent not found' });
+
+  const month = `${periodStart}_to_${periodEnd}`;
+  const id = `pay_${agentId}_${month}`;
+
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const overlap = await findOverlappingPeriod(client, agentId, periodStart, periodEnd, id);
+    if (overlap) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        error: `Overlaps an existing payroll period for this agent: ${overlap.month} (${overlap.period_start_text} to ${overlap.period_end_text}). Delete or adjust that one first.`
+      });
+    }
+    const { rows: [existing] } = await client.query(
+      'SELECT status, commission_pkr, bonus_pkr, deductions_pkr FROM payroll WHERE id = $1 FOR UPDATE',
+      [id]
+    );
+    if (existing?.status === 'Paid') {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'This payroll is already paid. Revert it to Pending before recalculating it.' });
+    }
+    await calculateAndStore(client, {
+      agentId,
+      month,
+      periodStart,
+      periodEnd,
+      baseSalary: Number(agent.base_salary_pkr) || 0,
+      manual: {
+        commission: Number(existing?.commission_pkr) || 0,
+        bonus: Number(existing?.bonus_pkr) || 0,
+        deductions: Number(existing?.deductions_pkr) || 0
+      }
+    });
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  const { rows } = await pool.query(`${SELECT_PAYROLL} WHERE p.id = $1`, [id]);
+  res.status(201).json(reshape(rows[0]));
 }));
 
 router.patch('/:id', requireRole('Admin'), asyncHandler(async (req, res) => {
@@ -197,7 +294,11 @@ router.patch('/:id', requireRole('Admin'), asyncHandler(async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const { rows: [existing] } = await client.query('SELECT * FROM payroll WHERE id = $1 FOR UPDATE', [id]);
+    const { rows: [existing] } = await client.query(
+      `SELECT *, to_char(period_start, 'YYYY-MM-DD') AS period_start_text, to_char(period_end, 'YYYY-MM-DD') AS period_end_text
+       FROM payroll WHERE id = $1 FOR UPDATE`,
+      [id]
+    );
     if (!existing) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Payroll record not found' });
@@ -210,6 +311,8 @@ router.patch('/:id', requireRole('Admin'), asyncHandler(async (req, res) => {
     await calculateAndStore(client, {
       agentId: existing.agent_id,
       month: existing.month,
+      periodStart: existing.period_start_text,
+      periodEnd: existing.period_end_text,
       baseSalary: Number(existing.base_salary_pkr),
       manual: {
         commission: pick(commissionPkr, existing.commission_pkr),
@@ -236,7 +339,11 @@ router.patch('/:id/toggle-payment', requireRole('Admin'), asyncHandler(async (re
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    const { rows: [existing] } = await client.query('SELECT * FROM payroll WHERE id = $1 FOR UPDATE', [id]);
+    const { rows: [existing] } = await client.query(
+      `SELECT *, to_char(period_start, 'YYYY-MM-DD') AS period_start_text, to_char(period_end, 'YYYY-MM-DD') AS period_end_text
+       FROM payroll WHERE id = $1 FOR UPDATE`,
+      [id]
+    );
     if (!existing) {
       await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Payroll record not found' });
@@ -252,6 +359,8 @@ router.patch('/:id/toggle-payment', requireRole('Admin'), asyncHandler(async (re
       const { advances, result } = await calculateAndStore(client, {
         agentId: existing.agent_id,
         month: existing.month,
+        periodStart: existing.period_start_text,
+        periodEnd: existing.period_end_text,
         baseSalary: Number(existing.base_salary_pkr),
         manual: {
           commission: Number(existing.commission_pkr),

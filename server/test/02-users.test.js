@@ -199,8 +199,8 @@ describe('DELETE /api/users/:id/permanent -- irreversible Agent deletion', () =>
     const lead = await request(app).post('/api/leads').set('Authorization', `Bearer ${admin.token}`)
       .send({ campaignId: campaign, name: 'Lead', phone: '5550001111', assignedAgentId: agent.id });
     await pool.query(
-      `INSERT INTO payroll (id, agent_id, month, base_salary_pkr, working_days, per_day_pkr, net_salary_pkr, status)
-       VALUES ($1,$2,'2026-01',50000,10,2083.33,20833.30,'Pending')`,
+      `INSERT INTO payroll (id, agent_id, month, period_start, period_end, base_salary_pkr, working_days, per_day_pkr, net_salary_pkr, status)
+       VALUES ($1,$2,'2026-01','2026-01-01','2026-01-31',50000,10,2083.33,20833.30,'Pending')`,
       [`pay_${agent.id}_2026-01`, agent.id]
     );
     const advanceId = `adv_${agent.id}`;

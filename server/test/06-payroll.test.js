@@ -389,4 +389,93 @@ describe('payroll access and generation rules', () => {
     expect(res.body.every(p => p.agentId === agent.id)).toBe(true);
     expect(res.body.some(p => p.agentId === other.id)).toBe(false);
   });
+
+  it('a whole-month payroll row carries the correct periodStart/periodEnd', async () => {
+    const { admin, agent } = await setup(24000);
+    const row = await generate(admin, agent, '2026-02'); // February 2026 is not a leap year here
+    expect(row.periodStart).toBe('2026-02-01');
+    expect(row.periodEnd).toBe('2026-02-28');
+  });
+});
+
+const generateCustom = (admin, agentId, periodStart, periodEnd) =>
+  request(app).post('/api/payroll/generate-custom').set(auth(admin.token)).send({ agentId, periodStart, periodEnd });
+
+describe('custom date-range payroll (partial periods, e.g. a new hire)', () => {
+  it('computes pay for just the given range -- attendance outside it never leaks in', async () => {
+    const { admin, agent } = await setup(24000); // per-day = 1000
+    // Joined the 10th: 3 days worked inside the range, 2 more just outside it on both sides.
+    await days(agent.id, ['2026-03-08', '2026-03-09']); // before the range -- must not count
+    await days(agent.id, ['2026-03-10', '2026-03-11', '2026-03-12']); // inside the range
+    await days(agent.id, ['2026-03-13', '2026-03-14']); // after the range -- must not count
+
+    const res = await generateCustom(admin, agent.id, '2026-03-10', '2026-03-12');
+    expect(res.status).toBe(201);
+    expect(res.body.workingDays).toBe(3);
+    expect(res.body.perDayPkr).toBe(1000);
+    expect(res.body.netSalaryPkr).toBe(3000);
+    expect(res.body.periodStart).toBe('2026-03-10');
+    expect(res.body.periodEnd).toBe('2026-03-12');
+    expect(res.body.month).toBe('2026-03-10_to_2026-03-12');
+  });
+
+  it('refuses a range overlapping an existing whole-month payroll for the same agent', async () => {
+    const { admin, agent } = await setup(24000);
+    await generate(admin, agent, '2026-03');
+    const res = await generateCustom(admin, agent.id, '2026-03-15', '2026-03-20');
+    expect(res.status).toBe(409);
+    expect(res.body.error).toMatch(/overlaps/i);
+  });
+
+  it('refuses a range overlapping another custom range already on this agent', async () => {
+    const { admin, agent } = await setup(24000);
+    await generateCustom(admin, agent.id, '2026-03-01', '2026-03-15');
+    const res = await generateCustom(admin, agent.id, '2026-03-10', '2026-03-20');
+    expect(res.status).toBe(409);
+  });
+
+  it('allows a non-overlapping custom range alongside an existing one', async () => {
+    const { admin, agent } = await setup(24000);
+    await generateCustom(admin, agent.id, '2026-03-01', '2026-03-15');
+    const res = await generateCustom(admin, agent.id, '2026-03-16', '2026-03-31');
+    expect(res.status).toBe(201);
+  });
+
+  it('recalculating the exact same range again is not treated as an overlap with itself', async () => {
+    const { admin, agent } = await setup(24000);
+    await days(agent.id, ['2026-03-10']);
+    const first = await generateCustom(admin, agent.id, '2026-03-10', '2026-03-12');
+    expect(first.status).toBe(201);
+    await days(agent.id, ['2026-03-11']);
+    const second = await generateCustom(admin, agent.id, '2026-03-10', '2026-03-12');
+    expect(second.status).toBe(201);
+    expect(second.body.id).toBe(first.body.id);
+    expect(second.body.workingDays).toBe(2);
+  });
+
+  it('refuses to silently overwrite an already-Paid custom-range payroll', async () => {
+    const { admin, agent } = await setup(24000);
+    const first = await generateCustom(admin, agent.id, '2026-03-10', '2026-03-12');
+    await togglePaid(admin, first.body.id);
+    const res = await generateCustom(admin, agent.id, '2026-03-10', '2026-03-12');
+    expect(res.status).toBe(409);
+  });
+
+  it('validates agentId/periodStart/periodEnd, and that the agent exists and is an Agent', async () => {
+    const { admin, agent } = await setup(24000);
+    expect((await generateCustom(admin, agent.id, '2026-03-12', '2026-03-10')).status).toBe(400); // end before start
+    expect((await generateCustom(admin, agent.id, 'not-a-date', '2026-03-12')).status).toBe(400);
+    expect((await generateCustom(admin, '', '2026-03-01', '2026-03-12')).status).toBe(400);
+    expect((await generateCustom(admin, 'usr_nope', '2026-03-01', '2026-03-12')).status).toBe(404);
+    const otherAdmin = await createAdmin();
+    expect((await generateCustom(admin, otherAdmin.id, '2026-03-01', '2026-03-12')).status).toBe(404); // exists, but not an Agent
+  });
+
+  it('only Admin can generate a custom-range payroll', async () => {
+    const { admin, agent } = await setup(24000);
+    const res = await request(app).post('/api/payroll/generate-custom').set(auth(agent.token))
+      .send({ agentId: agent.id, periodStart: '2026-03-01', periodEnd: '2026-03-12' });
+    expect(res.status).toBe(403);
+    void admin;
+  });
 });

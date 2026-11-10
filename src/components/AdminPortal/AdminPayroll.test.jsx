@@ -22,6 +22,7 @@ const setup = (props = {}) => render(
     users={AGENTS}
     onTogglePaymentStatus={vi.fn().mockResolvedValue(undefined)}
     onGeneratePayroll={vi.fn().mockResolvedValue(undefined)}
+    onGenerateCustomPayroll={vi.fn().mockResolvedValue(undefined)}
     onUpdatePayrollAdjustments={vi.fn().mockResolvedValue(undefined)}
     {...props}
   />
@@ -189,5 +190,82 @@ describe('AdminPayroll month filter', () => {
     const rows = payrollRows();
     expect(rows).toHaveLength(1);
     expect(within(rows[0]).getByText('5')).toBeInTheDocument(); // November's own days worked
+  });
+});
+
+describe('AdminPayroll custom date-range generation', () => {
+  it('defaults to Whole Month mode; switching to Custom Range swaps the controls', async () => {
+    const user = userEvent.setup();
+    setup();
+    expect(screen.getByLabelText(/^pay month$/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/agent for custom payroll period/i)).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^custom range$/i }));
+    expect(screen.queryByLabelText(/^pay month$/i)).not.toBeInTheDocument();
+    expect(screen.getByLabelText(/agent for custom payroll period/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/period start/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/period end/i)).toBeInTheDocument();
+  });
+
+  it('submits the picked agent and date range, and jumps the month filter to the result', async () => {
+    const onGenerateCustomPayroll = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    // Mirrors what App.jsx really does after a successful call: re-fetch payroll, which now
+    // includes the new custom-range row -- that's what makes it a selectable filter option.
+    const CUSTOM_ROW = { ...ROW, id: 'pay_a1_custom', month: '2026-10-02_to_2026-10-31' };
+    setup({ payroll: [ROW, CUSTOM_ROW], onGenerateCustomPayroll });
+
+    await user.click(screen.getByRole('button', { name: /^custom range$/i }));
+    await user.selectOptions(screen.getByLabelText(/agent for custom payroll period/i), 'usr_a1');
+    fireEvent.change(screen.getByLabelText(/period start/i), { target: { value: '2026-10-02' } });
+    fireEvent.change(screen.getByLabelText(/period end/i), { target: { value: '2026-10-31' } });
+    await user.click(screen.getByRole('button', { name: /calculate for agent/i }));
+
+    await waitFor(() => expect(onGenerateCustomPayroll).toHaveBeenCalledWith({
+      agentId: 'usr_a1', periodStart: '2026-10-02', periodEnd: '2026-10-31'
+    }));
+    // Jumps the month filter straight to the matching label, same as the whole-month flow does.
+    await waitFor(() => expect(screen.getByLabelText(/filter by month/i)).toHaveValue('2026-10-02_to_2026-10-31'));
+  });
+
+  it('refuses to submit without an agent and both dates, without calling the handler', async () => {
+    const onGenerateCustomPayroll = vi.fn();
+    const user = userEvent.setup();
+    setup({ onGenerateCustomPayroll });
+
+    await user.click(screen.getByRole('button', { name: /^custom range$/i }));
+    await user.click(screen.getByRole('button', { name: /calculate for agent/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/pick an agent and both dates/i);
+    expect(onGenerateCustomPayroll).not.toHaveBeenCalled();
+  });
+
+  it('refuses an end date before the start date, without calling the handler', async () => {
+    const onGenerateCustomPayroll = vi.fn();
+    const user = userEvent.setup();
+    setup({ onGenerateCustomPayroll });
+
+    await user.click(screen.getByRole('button', { name: /^custom range$/i }));
+    await user.selectOptions(screen.getByLabelText(/agent for custom payroll period/i), 'usr_a1');
+    fireEvent.change(screen.getByLabelText(/period start/i), { target: { value: '2026-10-20' } });
+    fireEvent.change(screen.getByLabelText(/period end/i), { target: { value: '2026-10-05' } });
+    await user.click(screen.getByRole('button', { name: /calculate for agent/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/end date cannot be before the start date/i);
+    expect(onGenerateCustomPayroll).not.toHaveBeenCalled();
+  });
+
+  it('shows the server refusal (e.g. an overlapping period) instead of failing silently', async () => {
+    const onGenerateCustomPayroll = vi.fn().mockRejectedValue(new Error('Overlaps an existing payroll period for this agent: 2026-10 (2026-10-01 to 2026-10-31).'));
+    const user = userEvent.setup();
+    setup({ onGenerateCustomPayroll });
+
+    await user.click(screen.getByRole('button', { name: /^custom range$/i }));
+    await user.selectOptions(screen.getByLabelText(/agent for custom payroll period/i), 'usr_a1');
+    fireEvent.change(screen.getByLabelText(/period start/i), { target: { value: '2026-10-15' } });
+    fireEvent.change(screen.getByLabelText(/period end/i), { target: { value: '2026-10-20' } });
+    await user.click(screen.getByRole('button', { name: /calculate for agent/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/overlaps an existing payroll period/i);
   });
 });

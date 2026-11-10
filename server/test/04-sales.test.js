@@ -222,7 +222,10 @@ describe('PATCH /api/sales/:id -- Admin free-form edit', () => {
 
   it('404s for a sale that does not exist', async () => {
     const admin = await createAdmin();
-    const res = await request(app).patch('/api/sales/SALE-9999').set('Authorization', `Bearer ${admin.token}`).send({ customerName: 'X' });
+    // Real sale ids are always SALE-1000..SALE-9999 (Math.floor(1000 + Math.random() * 9000) in the
+    // POST route), so a 4-digit id in that exact range risks colliding with one some other test in
+    // the shared suite run happened to generate. SALE-0001 is outside that range -- never real.
+    const res = await request(app).patch('/api/sales/SALE-0001').set('Authorization', `Bearer ${admin.token}`).send({ customerName: 'X' });
     expect(res.status).toBe(404);
   });
 });

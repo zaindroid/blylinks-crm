@@ -43,7 +43,7 @@ import { fetchAttendance, clockIn, clockOut, updateAttendanceStatus } from './ap
 import { fetchTargets, updateTarget } from './api/targets';
 import { fetchCallbacks, addCallback, completeCallback } from './api/callbacks';
 import { fetchLeads, addLead, updateLeadStatus } from './api/leads';
-import { fetchPayroll, togglePaymentStatus, generatePayroll, updatePayrollAdjustments } from './api/payroll';
+import { fetchPayroll, togglePaymentStatus, generatePayroll, generateCustomPayroll, updatePayrollAdjustments } from './api/payroll';
 import { fetchMessages, sendMessage } from './api/messages';
 import { fetchMessageGroups, createMessageGroup, updateMessageGroupMembers, deleteMessageGroup } from './api/messageGroups';
 import { fetchKbArticles, createKbArticle, updateKbArticle, deleteKbArticle } from './api/kb';
@@ -504,6 +504,11 @@ export default function App() {
     setPayroll(await fetchPayroll());
   };
 
+  const handleGenerateCustomPayroll = async ({ agentId, periodStart, periodEnd }) => {
+    await generateCustomPayroll({ agentId, periodStart, periodEnd });
+    setPayroll(await fetchPayroll());
+  };
+
   const handleUpdatePayrollAdjustments = async (payrollId, adjustments) => {
     await updatePayrollAdjustments(payrollId, adjustments);
     setPayroll(await fetchPayroll());
@@ -894,6 +899,7 @@ export default function App() {
               users={allUsers}
               onTogglePaymentStatus={handleTogglePaymentStatus}
               onGeneratePayroll={handleGeneratePayroll}
+              onGenerateCustomPayroll={handleGenerateCustomPayroll}
               onUpdatePayrollAdjustments={handleUpdatePayrollAdjustments}
             />
           )}
