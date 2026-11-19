@@ -55,6 +55,15 @@ describe('SalesLeaderboard', () => {
     expect(await screen.findByText(/no sales submitted in this period yet/i)).toBeInTheDocument();
   });
 
+  it('never shows a dollar amount anywhere -- this board is about submission count only', async () => {
+    salesApi.fetchLeaderboard.mockResolvedValue(ROWS);
+    const { container } = render(<SalesLeaderboard currentUser={{ id: 'a1' }} />);
+
+    await screen.findByText('Bilal Raza');
+    // formatPKR always renders as "Rs. 400,000" -- that exact shape is what must never appear here.
+    expect(container.textContent).not.toMatch(/Rs\.\s?[\d,]+|₨\s?[\d,]+/);
+  });
+
   it('shows the error message if the fetch fails', async () => {
     salesApi.fetchLeaderboard.mockRejectedValue(new Error('Network down'));
     render(<SalesLeaderboard currentUser={{ id: 'a1' }} />);

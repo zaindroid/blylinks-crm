@@ -47,6 +47,18 @@ describe('computePayroll', () => {
   it('a zero base salary yields zero pay however many days were worked', () => {
     expect(computePayroll({ baseSalary: 0, workingDays: 24 }).net).toBe(0);
   });
+
+  it('divides by 24 unless a different pay-cycle-days is given', () => {
+    expect(computePayroll({ baseSalary: 24000, workingDays: 1 }).perDay).toBe(1000); // 24000/24
+    expect(computePayroll({ baseSalary: 22000, workingDays: 1, payCycleDays: 22 }).perDay).toBe(1000); // 22000/22
+    expect(computePayroll({ baseSalary: 23000, workingDays: 1, payCycleDays: 23 }).perDay).toBe(1000); // 23000/23
+  });
+
+  it('falls back to 24 for an invalid payCycleDays (zero, negative, or junk) rather than dividing by it', () => {
+    for (const bad of [0, -5, 'abc', null, undefined]) {
+      expect(computePayroll({ baseSalary: 24000, workingDays: 1, payCycleDays: bad }).perDay).toBe(1000);
+    }
+  });
 });
 
 describe('allocateRecovery', () => {

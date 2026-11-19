@@ -1,6 +1,7 @@
 // The salary formula, kept free of any database or HTTP so it can be tested and audited on its own.
 //
-//   per-day rate     = monthly base salary / 24
+//   per-day rate     = monthly base salary / pay cycle days (24 by default -- Admin can override
+//                      per pay period, since a real calendar month can have 22, 23, 28, 30 or 31 days)
 //   earned base      = per-day rate x working days
 //   tardy deduction  = (number of weeks with 3+ tardies) x half a day's pay
 //   gross            = earned base + commission + bonus
@@ -9,7 +10,7 @@
 //                      and is recovered from the next payroll
 //   net              = gross - tardy deduction - other deductions - advance recovery
 
-const DAYS_IN_PAY_MONTH = 24;
+const DAYS_IN_PAY_MONTH = 24; // default pay-cycle-days divisor, used unless a generation overrides it
 const TARDIES_PER_PENALTY_WEEK = 3;
 
 const round2 = (n) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
@@ -22,9 +23,11 @@ function computePayroll({
   bonus = 0,
   otherDeductions = 0,
   tardyWeeks = 0,
-  outstandingAdvances = 0
+  outstandingAdvances = 0,
+  payCycleDays = DAYS_IN_PAY_MONTH
 }) {
-  const perDay = round2(money(baseSalary) / DAYS_IN_PAY_MONTH);
+  const divisor = Number(payCycleDays) > 0 ? Number(payCycleDays) : DAYS_IN_PAY_MONTH;
+  const perDay = round2(money(baseSalary) / divisor);
   const earnedBase = round2(perDay * Math.max(0, money(workingDays)));
   const tardyDeduction = round2(Math.max(0, money(tardyWeeks)) * (perDay / 2));
   const gross = round2(earnedBase + money(commission) + money(bonus));

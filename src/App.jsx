@@ -499,13 +499,13 @@ export default function App() {
     setPayroll(await fetchPayroll());
   };
 
-  const handleGeneratePayroll = async (month) => {
-    await generatePayroll(month);
+  const handleGeneratePayroll = async (month, payCycleDays) => {
+    await generatePayroll(month, payCycleDays);
     setPayroll(await fetchPayroll());
   };
 
-  const handleGenerateCustomPayroll = async ({ agentId, periodStart, periodEnd }) => {
-    await generateCustomPayroll({ agentId, periodStart, periodEnd });
+  const handleGenerateCustomPayroll = async ({ agentId, periodStart, periodEnd, payCycleDays }) => {
+    await generateCustomPayroll({ agentId, periodStart, periodEnd, payCycleDays });
     setPayroll(await fetchPayroll());
   };
 

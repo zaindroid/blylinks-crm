@@ -12,11 +12,15 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
   // month being paid before anything can be calculated, so payroll is never generated for the
   // wrong (or current, still-incomplete) month by accident.
   const [generateMonth, setGenerateMonth] = useState('');
+  // The "/24" divisor in the formula -- a real calendar month can have 22, 23, 28, 30 or 31 working
+  // days, so this is editable rather than fixed. Defaults to 24; shown pre-filled so it's obvious
+  // what will be used if left alone.
+  const [payCycleDays, setPayCycleDays] = useState('24');
   const [generating, setGenerating] = useState(false);
   // 'month' (the normal case: one whole calendar month, every active Agent) vs 'custom' (one
   // Agent, an arbitrary date range -- e.g. a new hire who joined mid-month).
   const [genMode, setGenMode] = useState('month');
-  const [customForm, setCustomForm] = useState({ agentId: '', periodStart: '', periodEnd: '' });
+  const [customForm, setCustomForm] = useState({ agentId: '', periodStart: '', periodEnd: '', payCycleDays: '24' });
   const [customGenerating, setCustomGenerating] = useState(false);
   // The table otherwise shows every payroll row ever generated, for every agent and every month,
   // all mixed together -- after picking a month and calculating, that looked like the calculation
@@ -24,7 +28,7 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
   // to "All" so existing visibility doesn't change until Admin narrows it down.
   const [monthFilter, setMonthFilter] = useState('All');
   const [adjustingFor, setAdjustingFor] = useState(null);
-  const [adjustForm, setAdjustForm] = useState({ commissionPkr: '', bonusPkr: '', deductionsPkr: '', workingDays: '' });
+  const [adjustForm, setAdjustForm] = useState({ commissionPkr: '', bonusPkr: '', deductionsPkr: '', workingDays: '', payCycleDays: '24' });
   const [error, setError] = useState('');
 
   const [advances, setAdvances] = useState([]);
@@ -64,9 +68,14 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
 
   const handleGenerate = async () => {
     if (!generateMonth) return;
+    const cycleDays = Number(payCycleDays);
+    if (!Number.isInteger(cycleDays) || cycleDays < 1 || cycleDays > 31) {
+      setError('Pay cycle days must be a whole number from 1 to 31.');
+      return;
+    }
     setGenerating(true);
     try {
-      await runPayrollAction(() => onGeneratePayroll(generateMonth));
+      await runPayrollAction(() => onGeneratePayroll(generateMonth, cycleDays));
       // Jump the table straight to the month just calculated, so the result is what's immediately
       // visible instead of buried among every other month's rows.
       setMonthFilter(generateMonth);
@@ -86,9 +95,14 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
       setError('The end date cannot be before the start date.');
       return;
     }
+    const cycleDays = Number(customForm.payCycleDays);
+    if (!Number.isInteger(cycleDays) || cycleDays < 1 || cycleDays > 31) {
+      setError('Pay cycle days must be a whole number from 1 to 31.');
+      return;
+    }
     setCustomGenerating(true);
     try {
-      await runPayrollAction(() => onGenerateCustomPayroll({ agentId, periodStart, periodEnd }));
+      await runPayrollAction(() => onGenerateCustomPayroll({ agentId, periodStart, periodEnd, payCycleDays: cycleDays }));
       // Same label the server generates for a custom range -- jump straight to the new result.
       setMonthFilter(`${periodStart}_to_${periodEnd}`);
     } finally {
@@ -101,7 +115,8 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
       commissionPkr: String(p.commissionPkr || 0),
       bonusPkr: String(p.bonusPkr || 0),
       deductionsPkr: String(p.deductionsPkr || 0),
-      workingDays: String(p.workingDays || 0)
+      workingDays: String(p.workingDays || 0),
+      payCycleDays: String(p.payCycleDays || 24)
     });
     setError('');
     setAdjustingFor(p);
@@ -114,7 +129,8 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
         commissionPkr: Number(adjustForm.commissionPkr) || 0,
         bonusPkr: Number(adjustForm.bonusPkr) || 0,
         deductionsPkr: Number(adjustForm.deductionsPkr) || 0,
-        workingDays: Number(adjustForm.workingDays) || 0
+        workingDays: Number(adjustForm.workingDays) || 0,
+        payCycleDays: Number(adjustForm.payCycleDays) || 24
       });
       setAdjustingFor(null);
       await loadAdvances();
@@ -162,8 +178,9 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
         <div>
           <h1 className="page-title">Salary & Payroll Management (Admin Restricted)</h1>
           <p className="page-subtitle">
-            Pay = (base salary ÷ 24) × days worked. Half a day is deducted for each week with 3 or more tardies, and any advance is
-            deducted automatically. Add commission, bonus or other deductions with Adjust before paying.
+            Pay = (base salary ÷ pay cycle days) × days worked. Pay cycle days defaults to 24 but is editable per period below --
+            a real month may have 22, 23 or more working days. Half a day is deducted for each week with 3 or more tardies, and
+            any advance is deducted automatically. Add commission, bonus or other deductions with Adjust before paying.
           </p>
         </div>
       </div>
@@ -189,6 +206,18 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
               onChange={(e) => setGenerateMonth(e.target.value)}
               aria-label="Pay month"
               placeholder="Select a month"
+            />
+            <span className="text-xs text-subtle">Pay cycle days</span>
+            <input
+              type="number"
+              min="1"
+              max="31"
+              step="1"
+              className="form-input"
+              style={{ width: '70px' }}
+              value={payCycleDays}
+              onChange={(e) => setPayCycleDays(e.target.value)}
+              aria-label="Pay cycle days"
             />
             <button className="btn btn-primary" onClick={handleGenerate} disabled={generating || !generateMonth} title={!generateMonth ? 'Select a month first' : undefined}>
               <RefreshCw size={15} /> {generating ? 'Calculating…' : 'Calculate Payroll'}
@@ -220,6 +249,18 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
               aria-label="Period end"
               value={customForm.periodEnd}
               onChange={(e) => setCustomForm({ ...customForm, periodEnd: e.target.value })}
+            />
+            <span className="text-xs text-subtle">Pay cycle days</span>
+            <input
+              type="number"
+              min="1"
+              max="31"
+              step="1"
+              className="form-input"
+              style={{ width: '70px' }}
+              value={customForm.payCycleDays}
+              onChange={(e) => setCustomForm({ ...customForm, payCycleDays: e.target.value })}
+              aria-label="Pay cycle days for custom payroll period"
             />
             <button type="submit" className="btn btn-primary" disabled={customGenerating}>
               <RefreshCw size={15} /> {customGenerating ? 'Calculating…' : 'Calculate for Agent'}
@@ -268,7 +309,8 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
               <th>Pay Month</th>
               <th>Base Salary</th>
               <th>Days Worked</th>
-              <th>Earned (Base ÷ 24 × Days)</th>
+              <th>Cycle Days</th>
+              <th>Earned (Base ÷ Cycle Days × Days)</th>
               <th>Commission</th>
               <th>Bonus</th>
               <th>Tardy Deduction</th>
@@ -281,7 +323,7 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
           </thead>
           <tbody>
             {visiblePayroll.length === 0 ? (
-              <tr><td colSpan="13" style={{ textAlign: 'center', padding: '1.5rem' }}>
+              <tr><td colSpan="14" style={{ textAlign: 'center', padding: '1.5rem' }}>
                 {payroll.length === 0 ? 'No payroll calculated yet. Pick a month and press Calculate Payroll.' : `No payroll for ${monthFilter} yet.`}
               </td></tr>
             ) : visiblePayroll.map(p => {
@@ -293,6 +335,7 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
                   <td>{p.month}</td>
                   <td className="font-mono">{formatPKR(p.baseSalaryPkr)}</td>
                   <td className="font-mono">{p.workingDays}</td>
+                  <td className="font-mono">{p.payCycleDays}</td>
                   <td className="font-mono">{formatPKR(earned)}</td>
                   <td className="font-mono text-blue">+{formatPKR(p.commissionPkr)}</td>
                   <td className="font-mono text-success">+{formatPKR(p.bonusPkr)}</td>
@@ -432,7 +475,7 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
                   </thead>
                   <tbody>
                     <tr><td>Monthly Base Salary</td><td style={{ textAlign: 'right' }} className="font-mono">{formatPKR(selectedPayslip.baseSalaryPkr)}</td></tr>
-                    <tr><td>Per-Day Rate (Base ÷ 24)</td><td style={{ textAlign: 'right' }} className="font-mono">{formatPKR(selectedPayslip.perDayPkr)}</td></tr>
+                    <tr><td>Per-Day Rate (Base ÷ {selectedPayslip.payCycleDays} Cycle Days)</td><td style={{ textAlign: 'right' }} className="font-mono">{formatPKR(selectedPayslip.perDayPkr)}</td></tr>
                     <tr><td>Days Worked</td><td style={{ textAlign: 'right' }} className="font-mono">{selectedPayslip.workingDays}</td></tr>
                     <tr><td>Earned Salary ({selectedPayslip.workingDays} days)</td><td style={{ textAlign: 'right' }} className="font-mono">{formatPKR(Math.round(selectedPayslip.perDayPkr * selectedPayslip.workingDays * 100) / 100)}</td></tr>
                     <tr><td>Commission</td><td style={{ textAlign: 'right' }} className="font-mono text-blue">+{formatPKR(selectedPayslip.commissionPkr)}</td></tr>
@@ -491,6 +534,10 @@ export default function AdminPayroll({ payroll, users = [], onTogglePaymentStatu
                     <label className="form-label" htmlFor="adj-days">Days worked</label>
                     <input id="adj-days" type="number" min="0" max="31" step="1" className="form-input" value={adjustForm.workingDays} onChange={e => setAdjustForm({ ...adjustForm, workingDays: e.target.value })} />
                   </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="adj-cycle-days">Pay cycle days (the "÷ 24" divisor)</label>
+                  <input id="adj-cycle-days" type="number" min="1" max="31" step="1" className="form-input" value={adjustForm.payCycleDays} onChange={e => setAdjustForm({ ...adjustForm, payCycleDays: e.target.value })} />
                 </div>
                 <div className="text-xs text-subtle">
                   Days worked comes from attendance; change it only to correct a mistake (Calculate Payroll resets it to attendance).

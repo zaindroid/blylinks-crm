@@ -479,3 +479,60 @@ describe('custom date-range payroll (partial periods, e.g. a new hire)', () => {
     void admin;
   });
 });
+
+describe('configurable pay-cycle-days (the "/24" divisor)', () => {
+  it('defaults to 24 when never specified', async () => {
+    const { admin, agent } = await setup(24000);
+    const row = await generate(admin, agent);
+    expect(row.payCycleDays).toBe(24);
+    expect(row.perDayPkr).toBe(1000); // 24000/24
+  });
+
+  it('an explicit payCycleDays on whole-month generation changes the per-day rate', async () => {
+    const { admin, agent } = await setup(22000);
+    const res = await request(app).post('/api/payroll/generate').set(auth(admin.token)).send({ month: MONTH, payCycleDays: 22 });
+    expect(res.status).toBe(200);
+    const row = res.body.find(p => p.agentId === agent.id);
+    expect(row.payCycleDays).toBe(22);
+    expect(row.perDayPkr).toBe(1000); // 22000/22
+  });
+
+  it('regenerating without payCycleDays keeps the row\'s own existing value, not the 24 default', async () => {
+    const { admin, agent } = await setup(23000);
+    await request(app).post('/api/payroll/generate').set(auth(admin.token)).send({ month: MONTH, payCycleDays: 23 });
+    await days(agent.id, ['2026-03-02']); // give it something new to recompute
+    const second = await request(app).post('/api/payroll/generate').set(auth(admin.token)).send({ month: MONTH });
+    const row = second.body.find(p => p.agentId === agent.id);
+    expect(row.payCycleDays).toBe(23); // preserved, not reset to 24
+    expect(row.perDayPkr).toBe(1000); // 23000/23
+  });
+
+  it('Adjust can override payCycleDays on an existing record', async () => {
+    const { admin, agent } = await setup(24000);
+    const row = await generate(admin, agent);
+    const res = await adjust(admin, row.id, { payCycleDays: 30 });
+    expect(res.status).toBe(200);
+    expect(res.body.payCycleDays).toBe(30);
+    expect(res.body.perDayPkr).toBe(800); // 24000/30
+  });
+
+  it('custom-range generation also accepts payCycleDays', async () => {
+    const { admin, agent } = await setup(21000);
+    const res = await request(app).post('/api/payroll/generate-custom').set(auth(admin.token))
+      .send({ agentId: agent.id, periodStart: '2026-04-01', periodEnd: '2026-04-10', payCycleDays: 21 });
+    expect(res.status).toBe(201);
+    expect(res.body.payCycleDays).toBe(21);
+    expect(res.body.perDayPkr).toBe(1000); // 21000/21
+  });
+
+  it('rejects an out-of-range or non-integer payCycleDays on generate, generate-custom and adjust', async () => {
+    const { admin, agent } = await setup(24000);
+    const row = await generate(admin, agent);
+    for (const bad of [0, -1, 32, 1.5, 'abc']) {
+      expect((await request(app).post('/api/payroll/generate').set(auth(admin.token)).send({ month: MONTH, payCycleDays: bad })).status).toBe(400);
+      expect((await request(app).post('/api/payroll/generate-custom').set(auth(admin.token))
+        .send({ agentId: agent.id, periodStart: '2026-05-01', periodEnd: '2026-05-10', payCycleDays: bad })).status).toBe(400);
+      expect((await adjust(admin, row.id, { payCycleDays: bad })).status).toBe(400);
+    }
+  });
+});

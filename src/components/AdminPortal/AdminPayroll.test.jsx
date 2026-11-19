@@ -64,7 +64,7 @@ describe('AdminPayroll', () => {
     expect(monthInput).toHaveValue('2026-08');
 
     await user.click(screen.getByRole('button', { name: /calculate payroll/i }));
-    await waitFor(() => expect(onGeneratePayroll).toHaveBeenCalledWith('2026-08'));
+    await waitFor(() => expect(onGeneratePayroll).toHaveBeenCalledWith('2026-08', 24)); // pay cycle days defaults to 24
     await waitFor(() => expect(payrollApi.fetchAdvances).toHaveBeenCalled());
   });
 
@@ -222,7 +222,7 @@ describe('AdminPayroll custom date-range generation', () => {
     await user.click(screen.getByRole('button', { name: /calculate for agent/i }));
 
     await waitFor(() => expect(onGenerateCustomPayroll).toHaveBeenCalledWith({
-      agentId: 'usr_a1', periodStart: '2026-10-02', periodEnd: '2026-10-31'
+      agentId: 'usr_a1', periodStart: '2026-10-02', periodEnd: '2026-10-31', payCycleDays: 24
     }));
     // Jumps the month filter straight to the matching label, same as the whole-month flow does.
     await waitFor(() => expect(screen.getByLabelText(/filter by month/i)).toHaveValue('2026-10-02_to_2026-10-31'));
@@ -267,5 +267,95 @@ describe('AdminPayroll custom date-range generation', () => {
     await user.click(screen.getByRole('button', { name: /calculate for agent/i }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(/overlaps an existing payroll period/i);
+  });
+});
+
+describe('AdminPayroll configurable pay cycle days (the "/24" divisor)', () => {
+  it('shows each row\'s own pay cycle days in the table', async () => {
+    setup({ payroll: [{ ...ROW, payCycleDays: 22 }] });
+    const row = (await screen.findByText('Ayesha Khan', { selector: 'td' })).closest('tr');
+    expect(within(row).getByText('22')).toBeInTheDocument();
+  });
+
+  it('whole-month generation defaults the pay cycle days field to 24 and includes it in the call', async () => {
+    const onGeneratePayroll = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    setup({ onGeneratePayroll });
+    await screen.findByText('medical');
+
+    expect(screen.getByLabelText(/^pay cycle days$/i)).toHaveValue(24);
+    fireEvent.change(screen.getByLabelText(/^pay month$/i), { target: { value: '2026-08' } });
+    await user.click(screen.getByRole('button', { name: /calculate payroll/i }));
+
+    expect(onGeneratePayroll).toHaveBeenCalledWith('2026-08', 24);
+  });
+
+  it('an edited pay cycle days value is sent instead of the default', async () => {
+    const onGeneratePayroll = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    setup({ onGeneratePayroll });
+    await screen.findByText('medical');
+
+    fireEvent.change(screen.getByLabelText(/^pay month$/i), { target: { value: '2026-08' } });
+    const cycleInput = screen.getByLabelText(/^pay cycle days$/i);
+    await user.clear(cycleInput);
+    await user.type(cycleInput, '22');
+    await user.click(screen.getByRole('button', { name: /calculate payroll/i }));
+
+    expect(onGeneratePayroll).toHaveBeenCalledWith('2026-08', 22);
+  });
+
+  it('rejects an out-of-range pay cycle days before calling the handler', async () => {
+    const onGeneratePayroll = vi.fn();
+    const user = userEvent.setup();
+    setup({ onGeneratePayroll });
+    await screen.findByText('medical');
+
+    fireEvent.change(screen.getByLabelText(/^pay month$/i), { target: { value: '2026-08' } });
+    const cycleInput = screen.getByLabelText(/^pay cycle days$/i);
+    await user.clear(cycleInput);
+    await user.type(cycleInput, '0');
+    await user.click(screen.getByRole('button', { name: /calculate payroll/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/pay cycle days must be a whole number from 1 to 31/i);
+    expect(onGeneratePayroll).not.toHaveBeenCalled();
+  });
+
+  it('custom-range generation also defaults to 24 and includes an edited value in the call', async () => {
+    const onGenerateCustomPayroll = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    setup({ onGenerateCustomPayroll });
+
+    await user.click(screen.getByRole('button', { name: /^custom range$/i }));
+    expect(screen.getByLabelText(/pay cycle days for custom payroll period/i)).toHaveValue(24);
+
+    await user.selectOptions(screen.getByLabelText(/agent for custom payroll period/i), 'usr_a1');
+    fireEvent.change(screen.getByLabelText(/period start/i), { target: { value: '2026-10-02' } });
+    fireEvent.change(screen.getByLabelText(/period end/i), { target: { value: '2026-10-31' } });
+    const cycleInput = screen.getByLabelText(/pay cycle days for custom payroll period/i);
+    await user.clear(cycleInput);
+    await user.type(cycleInput, '30');
+    await user.click(screen.getByRole('button', { name: /calculate for agent/i }));
+
+    expect(onGenerateCustomPayroll).toHaveBeenCalledWith({
+      agentId: 'usr_a1', periodStart: '2026-10-02', periodEnd: '2026-10-31', payCycleDays: 30
+    });
+  });
+
+  it('Adjust pre-fills pay cycle days from the row and sends an edited value', async () => {
+    const onUpdatePayrollAdjustments = vi.fn().mockResolvedValue(undefined);
+    const user = userEvent.setup();
+    setup({ payroll: [{ ...ROW, payCycleDays: 24 }], onUpdatePayrollAdjustments });
+
+    await user.click(screen.getByRole('button', { name: /adjust/i }));
+    // The page also always has the Whole-Month generator's own "Pay cycle days" field, so this
+    // query targets the Adjust modal's field specifically by its fuller label text.
+    const cycleInput = screen.getByLabelText(/divisor/i);
+    expect(cycleInput).toHaveValue(24);
+    await user.clear(cycleInput);
+    await user.type(cycleInput, '23');
+    await user.click(screen.getByRole('button', { name: /save adjustments/i }));
+
+    expect(onUpdatePayrollAdjustments).toHaveBeenCalledWith(ROW.id, expect.objectContaining({ payCycleDays: 23 }));
   });
 });

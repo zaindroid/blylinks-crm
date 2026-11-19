@@ -37,6 +37,7 @@ function reshape(row) {
     advanceDeductionPkr: Number(row.advance_deduction_pkr),
     deductionsPkr: Number(row.deductions_pkr),
     netSalaryPkr: Number(row.net_salary_pkr),
+    payCycleDays: Number(row.pay_cycle_days),
     status: row.status,
     paymentDate: row.payment_date
   };
@@ -47,6 +48,16 @@ function parseMoney(value) {
   if (value === undefined || value === null || value === '') return null;
   const n = Number(value);
   return Number.isFinite(n) && n >= 0 && n < 1e10 ? n : NaN;
+}
+
+// A whole number of days to divide the base salary by for this pay period (the "/24" in the
+// formula) -- real calendar months vary (22, 23, 28, 30, 31...), so this is Admin-settable per
+// generation/adjustment rather than a fixed constant. undefined/null/'' means "not provided" (the
+// caller decides the fallback); anything else must be a whole number from 1 to 31.
+function parsePayCycleDays(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 1 && n <= 31 ? n : NaN;
 }
 
 // ---- facts derived from attendance and advances ------------------------------------------------
@@ -92,8 +103,9 @@ async function outstandingAdvances(db, agentId, periodEnd) {
 // Recomputes and stores one payroll row. `manual` are the Admin-entered figures; `workingDays` and
 // the tardy count come from attendance unless the Admin explicitly overrides working days. `month`
 // is just this row's identity/display label -- a real 'YYYY-MM' for a whole-month generation, or a
-// custom-range label -- the actual period worked is always periodStart/periodEnd.
-async function calculateAndStore(db, { agentId, month, periodStart, periodEnd, baseSalary, manual, workingDaysOverride }) {
+// custom-range label -- the actual period worked is always periodStart/periodEnd. `payCycleDays`
+// is the "/24" divisor for this period -- defaults to 24 only when truly never set before.
+async function calculateAndStore(db, { agentId, month, periodStart, periodEnd, baseSalary, manual, workingDaysOverride, payCycleDays = 24 }) {
   const facts = await attendanceFacts(db, agentId, periodStart, periodEnd);
   const advances = await outstandingAdvances(db, agentId, periodEnd);
   const workingDays = workingDaysOverride ?? facts.workingDays;
@@ -105,23 +117,24 @@ async function calculateAndStore(db, { agentId, month, periodStart, periodEnd, b
     bonus: manual.bonus,
     otherDeductions: manual.deductions,
     tardyWeeks: facts.tardyWeeks,
-    outstandingAdvances: advances.reduce((s, a) => s + a.outstanding, 0)
+    outstandingAdvances: advances.reduce((s, a) => s + a.outstanding, 0),
+    payCycleDays
   });
 
   const id = `pay_${agentId}_${month}`;
   await db.query(
     `INSERT INTO payroll (id, agent_id, month, period_start, period_end, base_salary_pkr, working_days, per_day_pkr,
                           commission_pkr, bonus_pkr, tardy_weeks, tardy_deduction_pkr, advance_deduction_pkr,
-                          deductions_pkr, net_salary_pkr, status)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'Pending')
+                          deductions_pkr, net_salary_pkr, pay_cycle_days, status)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'Pending')
      ON CONFLICT (agent_id, month) DO UPDATE SET
        period_start = EXCLUDED.period_start, period_end = EXCLUDED.period_end,
        base_salary_pkr = EXCLUDED.base_salary_pkr, working_days = EXCLUDED.working_days, per_day_pkr = EXCLUDED.per_day_pkr,
        commission_pkr = EXCLUDED.commission_pkr, bonus_pkr = EXCLUDED.bonus_pkr, tardy_weeks = EXCLUDED.tardy_weeks,
        tardy_deduction_pkr = EXCLUDED.tardy_deduction_pkr, advance_deduction_pkr = EXCLUDED.advance_deduction_pkr,
-       deductions_pkr = EXCLUDED.deductions_pkr, net_salary_pkr = EXCLUDED.net_salary_pkr`,
+       deductions_pkr = EXCLUDED.deductions_pkr, net_salary_pkr = EXCLUDED.net_salary_pkr, pay_cycle_days = EXCLUDED.pay_cycle_days`,
     [id, agentId, month, periodStart, periodEnd, baseSalary, workingDays, result.perDay, manual.commission, manual.bonus,
-      facts.tardyWeeks, result.tardyDeduction, result.advanceDeduction, manual.deductions, result.net]
+      facts.tardyWeeks, result.tardyDeduction, result.advanceDeduction, manual.deductions, result.net, payCycleDays]
   );
   return { id, advances, result };
 }
@@ -165,9 +178,13 @@ router.get('/', asyncHandler(async (req, res) => {
 }));
 
 router.post('/generate', requireRole('Admin'), asyncHandler(async (req, res) => {
-  const { month } = req.body;
+  const { month, payCycleDays } = req.body;
   if (!month || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
     return res.status(400).json({ error: 'month is required, in YYYY-MM format' });
+  }
+  const parsedCycleDays = parsePayCycleDays(payCycleDays);
+  if (Number.isNaN(parsedCycleDays)) {
+    return res.status(400).json({ error: 'payCycleDays must be a whole number from 1 to 31' });
   }
   const periodStart = `${month}-01`;
   const periodEnd = lastDayOfMonth(month);
@@ -181,7 +198,7 @@ router.post('/generate', requireRole('Admin'), asyncHandler(async (req, res) => 
     await client.query('BEGIN');
     for (const agent of agents) {
       const { rows: [existing] } = await client.query(
-        'SELECT status, commission_pkr, bonus_pkr, deductions_pkr FROM payroll WHERE agent_id = $1 AND month = $2 FOR UPDATE',
+        'SELECT status, commission_pkr, bonus_pkr, deductions_pkr, pay_cycle_days FROM payroll WHERE agent_id = $1 AND month = $2 FOR UPDATE',
         [agent.id, month]
       );
       // A Paid record is final -- its advance recoveries are already booked. Revert it to Pending first to change it.
@@ -197,7 +214,10 @@ router.post('/generate', requireRole('Admin'), asyncHandler(async (req, res) => 
           commission: Number(existing?.commission_pkr) || 0,
           bonus: Number(existing?.bonus_pkr) || 0,
           deductions: Number(existing?.deductions_pkr) || 0
-        }
+        },
+        // An explicit payCycleDays applies to this whole batch; otherwise keep each row's own
+        // existing value (never silently reset on a routine re-run), or 24 for a brand-new row.
+        payCycleDays: parsedCycleDays ?? existing?.pay_cycle_days ?? 24
       });
     }
     await client.query('COMMIT');
@@ -217,12 +237,16 @@ router.post('/generate', requireRole('Admin'), asyncHandler(async (req, res) => 
 // overlaps a payroll period this agent already has (whole-month or another custom range): paying
 // the same attendance days twice is exactly the kind of mistake this guards against.
 router.post('/generate-custom', requireRole('Admin'), asyncHandler(async (req, res) => {
-  const { agentId, periodStart, periodEnd } = req.body;
+  const { agentId, periodStart, periodEnd, payCycleDays } = req.body;
   if (!agentId || !DATE_RE.test(periodStart || '') || !DATE_RE.test(periodEnd || '')) {
     return res.status(400).json({ error: 'agentId, periodStart and periodEnd (YYYY-MM-DD) are required' });
   }
   if (periodEnd < periodStart) {
     return res.status(400).json({ error: 'periodEnd must not be before periodStart' });
+  }
+  const parsedCycleDays = parsePayCycleDays(payCycleDays);
+  if (Number.isNaN(parsedCycleDays)) {
+    return res.status(400).json({ error: 'payCycleDays must be a whole number from 1 to 31' });
   }
 
   const { rows: [agent] } = await pool.query(`SELECT id, base_salary_pkr FROM users WHERE id = $1 AND role = 'Agent'`, [agentId]);
@@ -242,7 +266,7 @@ router.post('/generate-custom', requireRole('Admin'), asyncHandler(async (req, r
       });
     }
     const { rows: [existing] } = await client.query(
-      'SELECT status, commission_pkr, bonus_pkr, deductions_pkr FROM payroll WHERE id = $1 FOR UPDATE',
+      'SELECT status, commission_pkr, bonus_pkr, deductions_pkr, pay_cycle_days FROM payroll WHERE id = $1 FOR UPDATE',
       [id]
     );
     if (existing?.status === 'Paid') {
@@ -259,7 +283,8 @@ router.post('/generate-custom', requireRole('Admin'), asyncHandler(async (req, r
         commission: Number(existing?.commission_pkr) || 0,
         bonus: Number(existing?.bonus_pkr) || 0,
         deductions: Number(existing?.deductions_pkr) || 0
-      }
+      },
+      payCycleDays: parsedCycleDays ?? existing?.pay_cycle_days ?? 24
     });
     await client.query('COMMIT');
   } catch (err) {
@@ -275,7 +300,7 @@ router.post('/generate-custom', requireRole('Admin'), asyncHandler(async (req, r
 
 router.patch('/:id', requireRole('Admin'), asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { commissionPkr, bonusPkr, deductionsPkr, workingDays } = req.body;
+  const { commissionPkr, bonusPkr, deductionsPkr, workingDays, payCycleDays } = req.body;
 
   const fields = { commissionPkr, bonusPkr, deductionsPkr };
   for (const [name, value] of Object.entries(fields)) {
@@ -289,6 +314,10 @@ router.patch('/:id', requireRole('Admin'), asyncHandler(async (req, res) => {
     if (!Number.isInteger(daysOverride) || daysOverride < 0 || daysOverride > 31) {
       return res.status(400).json({ error: 'workingDays must be a whole number from 0 to 31' });
     }
+  }
+  const parsedCycleDays = parsePayCycleDays(payCycleDays);
+  if (Number.isNaN(parsedCycleDays)) {
+    return res.status(400).json({ error: 'payCycleDays must be a whole number from 1 to 31' });
   }
 
   const client = await pool.connect();
@@ -319,8 +348,9 @@ router.patch('/:id', requireRole('Admin'), asyncHandler(async (req, res) => {
         bonus: pick(bonusPkr, existing.bonus_pkr),
         deductions: pick(deductionsPkr, existing.deductions_pkr)
       },
-      // Without an explicit override, keep whatever working-days figure is already on the record.
-      workingDaysOverride: daysOverride ?? Number(existing.working_days)
+      // Without an explicit override, keep whatever working-days/pay-cycle-days figure is already on the record.
+      workingDaysOverride: daysOverride ?? Number(existing.working_days),
+      payCycleDays: parsedCycleDays ?? Number(existing.pay_cycle_days)
     });
     await client.query('COMMIT');
   } catch (err) {
@@ -367,7 +397,8 @@ router.patch('/:id/toggle-payment', requireRole('Admin'), asyncHandler(async (re
           bonus: Number(existing.bonus_pkr),
           deductions: Number(existing.deductions_pkr)
         },
-        workingDaysOverride: Number(existing.working_days)
+        workingDaysOverride: Number(existing.working_days),
+        payCycleDays: Number(existing.pay_cycle_days)
       });
       for (const { advanceId, amount } of allocateRecovery(advances, result.advanceDeduction)) {
         await client.query(

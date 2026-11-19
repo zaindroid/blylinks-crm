@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { fetchLeaderboard } from '../../api/sales';
-import { formatPKR } from '../../utils/currency';
 
 const RANK_STYLES = ['gold', 'silver', 'bronze'];
 
@@ -59,10 +58,7 @@ export default function SalesLeaderboard({ currentUser }) {
                 {idx + 1}
               </div>
               <div className="leaderboard-name">{row.agentName}{currentUser && row.agentId === currentUser.id ? ' (You)' : ''}</div>
-              <div className="leaderboard-stats">
-                <span className="leaderboard-count">{countOf(row)} submitted</span>
-                <span className="font-mono text-accent">{formatPKR(row.approvedRevenuePkr)} approved, all-time</span>
-              </div>
+              <span className="leaderboard-count">{countOf(row)} submitted</span>
             </div>
           ))}
         </div>
@@ -82,8 +78,7 @@ export default function SalesLeaderboard({ currentUser }) {
         .leaderboard-rank.silver { background: #e5e7eb; color: #4b5563; }
         .leaderboard-rank.bronze { background: #fed7aa; color: #9a3412; }
         .leaderboard-name { flex: 1; font-size: 0.8rem; font-weight: 600; }
-        .leaderboard-stats { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
-        .leaderboard-count { font-size: 0.7rem; font-weight: 700; color: var(--text-blue, #2563eb); }
+        .leaderboard-count { font-size: 0.7rem; font-weight: 700; color: var(--text-blue, #2563eb); white-space: nowrap; }
       `}</style>
     </div>
   );
