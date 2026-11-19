@@ -1,4 +1,4 @@
-export const DATE_RANGE_PRESETS = ['All Time', 'Today', 'This Week', 'This Month', 'Custom'];
+export const DATE_RANGE_PRESETS = ['All Time', 'Today', 'This Week', 'Last Week', 'This Month', 'Custom'];
 
 function startOfDay(d) {
   const copy = new Date(d);
@@ -27,6 +27,14 @@ export function rangeForPreset(preset) {
   }
   if (preset === 'This Week') {
     return { from: startOfWeek(now), to: null };
+  }
+  if (preset === 'Last Week') {
+    const thisWeekStart = startOfWeek(now);
+    const lastWeekStart = new Date(thisWeekStart);
+    lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+    // One millisecond before this week starts -- the end of last Saturday, inclusive.
+    const lastWeekEnd = new Date(thisWeekStart.getTime() - 1);
+    return { from: lastWeekStart, to: lastWeekEnd };
   }
   if (preset === 'This Month') {
     return { from: startOfMonth(now), to: null };

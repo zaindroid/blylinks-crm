@@ -26,6 +26,8 @@ describe('filterByDateRange', () => {
     { id: 'earlier-this-week', saleDateIso: iso(2026, 7, 17) }, // Monday
     { id: 'earlier-this-month', saleDateIso: iso(2026, 7, 3) },
     { id: 'last-month', saleDateIso: iso(2026, 6, 20) },
+    { id: 'last-week-start', saleDateIso: iso(2026, 7, 9) }, // Sun 8/9 -- first day of last week
+    { id: 'last-week-end', saleDateIso: iso(2026, 7, 15, 23) }, // Sat 8/15 -- last day of last week
     { id: 'no-date', saleDateIso: null }
   ];
 
@@ -53,6 +55,16 @@ describe('filterByDateRange', () => {
     const result = filterByDateRange(records, 'saleDateIso', 'This Month').map(r => r.id);
     expect(result).toContain('earlier-this-month');
     expect(result).not.toContain('last-month');
+  });
+
+  it('Last Week includes the full prior Sun-Sat week (inclusive of both ends) and excludes this week', () => {
+    // FIXED_NOW is Wed 2026-08-19; last week runs Sun 2026-08-09 through Sat 2026-08-15.
+    const result = filterByDateRange(records, 'saleDateIso', 'Last Week').map(r => r.id);
+    expect(result).toContain('last-week-start');
+    expect(result).toContain('last-week-end');
+    expect(result).not.toContain('earlier-this-week'); // this week, not last
+    expect(result).not.toContain('today-morning');
+    expect(result).not.toContain('earlier-this-month'); // 8/3, before last week started
   });
 
   it('records with a null/missing date field are always excluded once any range is applied', () => {
@@ -93,6 +105,8 @@ describe('filterByDateOnlyRange', () => {
     { id: 'earlier-this-week', date: '2026-08-17' },
     { id: 'earlier-this-month', date: '2026-08-03' },
     { id: 'last-month', date: '2026-07-20' },
+    { id: 'last-week-start', date: '2026-08-09' },
+    { id: 'last-week-end', date: '2026-08-15' },
     { id: 'no-date', date: null }
   ];
 
@@ -115,6 +129,14 @@ describe('filterByDateOnlyRange', () => {
     const result = filterByDateOnlyRange(logs, 'date', 'This Month').map(r => r.id);
     expect(result).toContain('earlier-this-month');
     expect(result).not.toContain('last-month');
+  });
+
+  it('Last Week includes the full prior Sun-Sat week and excludes this week', () => {
+    const result = filterByDateOnlyRange(logs, 'date', 'Last Week').map(r => r.id);
+    expect(result).toContain('last-week-start');
+    expect(result).toContain('last-week-end');
+    expect(result).not.toContain('earlier-this-week');
+    expect(result).not.toContain('today');
   });
 
   it('records with a null date are excluded once any range is applied', () => {

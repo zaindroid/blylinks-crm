@@ -22,6 +22,7 @@ import DncCheck from './components/Shared/DncCheck';
 import DncManagement from './components/Shared/DncManagement';
 import AccessControl from './components/AdminPortal/AccessControl';
 import SupportTickets from './components/Shared/SupportTickets';
+import CheckLead from './components/Shared/CheckLead';
 import TeamManagement from './components/Shared/TeamManagement';
 import MessageGroupManagement from './components/Shared/MessageGroupManagement';
 import TaskNotificationDrawer from './components/TaskNotificationDrawer';
@@ -944,6 +945,8 @@ export default function App() {
               onReopenTicket={handleReopenTicket}
             />
           )}
+
+          {activeTab === 'check-lead' && <CheckLead />}
         </main>
       </div>
 

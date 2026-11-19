@@ -25,6 +25,7 @@ const ticketsRoutes = require('./routes/tickets.routes');
 const adminRoutes = require('./routes/admin.routes');
 const dncRoutes = require('./routes/dnc.routes');
 const accessRoutes = require('./routes/access.routes');
+const checkLeadRoutes = require('./routes/checkLead.routes');
 const { ipAccessGate } = require('./utils/ipAccess');
 
 function buildApp() {
@@ -78,6 +79,9 @@ function buildApp() {
   app.use('/api/access', requireAuth, blockIfMustChangePassword, apiLimiter, accessRoutes);
   app.use('/api/dnc', requireAuth, blockIfMustChangePassword, apiLimiter, dncRoutes);
   app.use('/api/admin', requireAuth, blockIfMustChangePassword, apiLimiter, adminRoutes);
+  // Any authenticated role (no requireRole) -- "has this phone number already been worked
+  // anywhere" is deliberately available org-wide, not scoped per campaign like most other routes.
+  app.use('/api/check-lead', requireAuth, blockIfMustChangePassword, apiLimiter, checkLeadRoutes);
 
   const distDir = path.join(__dirname, '..', 'dist');
   // Vite's built JS/CSS filenames are content-hashed, so they're safe to cache

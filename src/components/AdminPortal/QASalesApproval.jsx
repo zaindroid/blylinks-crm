@@ -36,7 +36,9 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
   const filteredSales = filterByDateRange(sales, 'saleDateIso', dateRangePreset, customFrom, customTo).filter(s => {
     const matchesSearch = s.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           s.agentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          s.id.toLowerCase().includes(searchTerm.toLowerCase());
+                          s.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (s.phone || '').includes(searchTerm) ||
+                          (s.phone2 || '').includes(searchTerm);
     const matchesStatus = statusFilter === 'All' || s.status === statusFilter;
     const matchesAgent = agentFilter === 'All' || s.agentId === agentFilter;
     const matchesCampaign = campaignFilter === 'All' || s.campaignId === campaignFilter;
@@ -79,7 +81,7 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
             <Search size={16} className="search-icon" />
             <input
               type="text"
-              placeholder="Search by sale ID, agent or customer..."
+              placeholder="Search by sale ID, agent, customer or phone..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="form-input"

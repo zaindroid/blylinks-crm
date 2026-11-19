@@ -19,7 +19,8 @@ import {
   MessageSquare,
   PhoneOff,
   ShieldCheck,
-  Wallet
+  Wallet,
+  Search
 } from 'lucide-react';
 
 const LOGO_SRC = '/blylinks-logo.png';
@@ -73,6 +74,7 @@ function getNavSections(role, pendingQaCount) {
   sections.push({
     title: 'Resources',
     items: [
+      { id: 'check-lead', label: 'Check Lead', icon: Search },
       { id: 'knowledge', label: 'Knowledge Base', icon: BookOpen },
       { id: 'tickets', label: 'Support Tickets', icon: LifeBuoy }
     ]

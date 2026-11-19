@@ -208,3 +208,23 @@ describe('QASalesApproval Admin free-form sale edit', () => {
     expect(screen.queryByRole('button', { name: /^edit$/i })).not.toBeInTheDocument();
   });
 });
+
+describe('QASalesApproval search by phone', () => {
+  it('finds a sale by phone 1 or phone 2, not just by name/agent/id', async () => {
+    const user = userEvent.setup();
+    setup([
+      sale({ id: 'S1', customerName: 'Alpha', phone: '5551234567', phone2: '5559998888' }),
+      sale({ id: 'S2', customerName: 'Beta', phone: '5550001111' })
+    ]);
+    const search = screen.getByPlaceholderText(/search by sale id, agent, customer or phone/i);
+
+    await user.type(search, '5551234567');
+    expect(screen.getByText('S1')).toBeInTheDocument();
+    expect(screen.queryByText('S2')).not.toBeInTheDocument();
+
+    await user.clear(search);
+    await user.type(search, '5559998888'); // phone2
+    expect(screen.getByText('S1')).toBeInTheDocument();
+    expect(screen.queryByText('S2')).not.toBeInTheDocument();
+  });
+});

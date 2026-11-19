@@ -103,6 +103,80 @@ describe('sale submission', () => {
   });
 });
 
+describe('submitting a sale auto-adds the phone to that campaign\'s DNC list', () => {
+  let phoneCounter = 0;
+  function uniquePhone() {
+    phoneCounter += 1;
+    return `555${String(Date.now()).slice(-4)}${String(phoneCounter).padStart(3, '0')}`;
+  }
+  const dncCheck = (token, campaignId, phone) =>
+    request(app).post('/api/dnc/check').set('Authorization', `Bearer ${token}`).send({ campaignId, phone });
+
+  it('the submitted phone is found on that campaign\'s DNC list afterward', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+    const phone = uniquePhone();
+
+    const before = await dncCheck(agent.token, campaignId, phone);
+    expect(before.body.found).toBe(false);
+
+    const sale = await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'Cust', phone, amount: 100 });
+    expect(sale.status).toBe(201);
+
+    const after = await dncCheck(agent.token, campaignId, phone);
+    expect(after.body.found).toBe(true);
+  });
+
+  it('is scoped to the sale\'s own campaign only -- a different campaign\'s list is untouched', async () => {
+    const admin = await createAdmin();
+    const campaignA = await createCampaign(admin.token);
+    const campaignB = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignA, campaignB]);
+    const phone = uniquePhone();
+
+    await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId: campaignA, customerName: 'Cust', phone, amount: 100 });
+
+    expect((await dncCheck(agent.token, campaignA, phone)).body.found).toBe(true);
+    expect((await dncCheck(agent.token, campaignB, phone)).body.found).toBe(false);
+  });
+
+  it('a phone that is already on the list does not block the sale (idempotent, no conflict error)', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+    const phone = uniquePhone();
+
+    const first = await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'First Cust', phone, amount: 100 });
+    expect(first.status).toBe(201);
+
+    // Same phone, a second sale (e.g. a repeat caller/duplicate attempt) -- must not 500 or 409.
+    const second = await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'Second Cust', phone, amount: 50 });
+    expect(second.status).toBe(201);
+
+    expect((await dncCheck(agent.token, campaignId, phone)).body.found).toBe(true);
+  });
+
+  it('a phone that does not look like a real number does not crash the sale, and nothing is added to DNC', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+
+    const sale = await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'Cust', phone: '11111', amount: 100 });
+    expect(sale.status).toBe(201);
+
+    // /dnc/check itself rejects a phone this malformed (400), so list-and-search as Admin instead.
+    const list = await request(app).get(`/api/dnc?campaignId=${campaignId}&q=11111`)
+      .set('Authorization', `Bearer ${admin.token}`);
+    expect(list.body.total).toBe(0);
+  });
+});
+
 describe('sale approve/reject RBAC', () => {
   it('Admin and Supervisor can approve; an Agent (even the sale owner) cannot', async () => {
     const admin = await createAdmin();

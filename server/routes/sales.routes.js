@@ -3,6 +3,8 @@ const pool = require('../db/pool');
 const asyncHandler = require('../utils/asyncHandler');
 const { requireRole } = require('../middleware/auth');
 const { getAllowedCampaignIds } = require('../db/usersRepo');
+const { genUniqueId } = require('../utils/genId');
+const { phoneKey } = require('../utils/phone');
 
 const router = express.Router();
 
@@ -139,6 +141,22 @@ router.post('/', asyncHandler(async (req, res) => {
      VALUES ($1,$2,$3,$4,$5,$6,$7,'Pending',$8,'','', COALESCE($${8 + ORDER_DETAIL_FIELDS.length + 1}::timestamptz, now()), ${detailPlaceholders})`,
     [id, customerName, phone, email || 'N/A', campaignId, req.user.id, saleAmount, agentNotes || 'No notes provided.', ...detailValues, saleDate || null]
   );
+  // Once a customer has gone through the order process on this campaign, nobody else should still
+  // be cold-calling that number for the same campaign -- so it goes straight onto this campaign's
+  // own DNC list, regardless of whether the sale ends up Approved or Rejected. Scoped to this one
+  // campaign only (another campaign may legitimately still call the same number). ON CONFLICT DO
+  // NOTHING: the number may already be listed, which isn't an error, just a no-op here. A phone
+  // that doesn't look like a real number (phoneKey() returns null) is silently skipped rather than
+  // failing the sale over it -- sales doesn't itself validate phone format beyond "required".
+  const dncKey = phoneKey(phone);
+  if (dncKey) {
+    await pool.query(
+      `INSERT INTO dnc_numbers (id, campaign_id, phone_key, phone_display, note, added_by)
+       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (campaign_id, phone_key) DO NOTHING`,
+      [genUniqueId('dnc'), campaignId, dncKey, String(phone).trim().slice(0, 32), `Auto-added: sale ${id}`, req.user.id]
+    );
+  }
+
   const { rows } = await pool.query(`${SELECT_SALE} WHERE s.id = $1`, [id]);
   res.status(201).json(reshapeSale(rows[0]));
 }));

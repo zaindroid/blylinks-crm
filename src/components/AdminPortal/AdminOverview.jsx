@@ -11,6 +11,7 @@ import {
 import { formatPKR } from '../../utils/currency';
 import SalesLeaderboard from '../Shared/SalesLeaderboard';
 import DashboardMessenger from '../Shared/DashboardMessenger';
+import PerformanceReport from '../Shared/PerformanceReport';
 
 function isToday(isoDate) {
   if (!isoDate) return false;
@@ -33,17 +34,15 @@ export default function AdminOverview({
 }) {
   const [showAdvancedModal, setShowAdvancedModal] = useState(false);
 
-  const activeProject = projects.find(p => p.id === selectedCampaignId) || projects[0];
+  // Combined across every campaign, not scoped to whichever one is currently selected -- 1 sale on
+  // Campaign A plus 1 on Campaign B is a total of 2 here, matching every other figure on this page.
+  const approvedSales = sales.filter(s => s.status === 'Approved');
+  const pendingSales = sales.filter(s => s.status === 'Pending');
 
-  // Filter sales to selected campaign
-  const campaignSales = sales.filter(s => s.campaignId === selectedCampaignId);
-  const approvedSales = campaignSales.filter(s => s.status === 'Approved');
-  const pendingSales = campaignSales.filter(s => s.status === 'Pending');
-
-  const totalSubmissions = campaignSales.length;
+  const totalSubmissions = sales.length;
   const approvalRate = totalSubmissions > 0 ? Math.round((approvedSales.length / totalSubmissions) * 100) : 0;
 
-  const assignedAgentsCount = activeProject?.assignedAgentIds?.length || users.filter(u => u.role === 'Agent').length;
+  const assignedAgentsCount = users.filter(u => u.role === 'Agent').length;
 
   // Sales Today by Campaign (all campaigns, approved sales made today)
   const salesTodayByCampaign = projects.map(p => {
@@ -62,7 +61,7 @@ export default function AdminOverview({
       <div className="page-header">
         <div className="page-header-text">
           <h1 className="page-title">Operations Portal</h1>
-          <p className="page-subtitle">BlyLinks Call Center Oversight &bull; Active Campaign: <span className="font-bold text-accent">{activeProject?.name}</span></p>
+          <p className="page-subtitle">BlyLinks Call Center Oversight &bull; Combined across all campaigns</p>
         </div>
         <div className="page-header-actions">
           <button className="btn btn-primary" onClick={() => setActiveTab('qa-approval')}>
@@ -80,9 +79,9 @@ export default function AdminOverview({
       {/* 4 Visual KPI Cards */}
       <div className="kpi-grid">
         <div className="kpi-card">
-          <div className="kpi-head"><span>Campaign Sales</span></div>
+          <div className="kpi-head"><span>Total Sales</span></div>
           <div className="kpi-value">{approvedSales.length}</div>
-          <div className="kpi-sub"><span className="text-success">Approved Deals</span></div>
+          <div className="kpi-sub"><span className="text-success">Approved, All Campaigns</span></div>
         </div>
 
         <div className="kpi-card">
@@ -94,13 +93,13 @@ export default function AdminOverview({
         <div className="kpi-card">
           <div className="kpi-head"><span>Approval Rate</span></div>
           <div className="kpi-value">{approvalRate}%</div>
-          <div className="kpi-sub"><span>{totalSubmissions} Campaign Submissions</span></div>
+          <div className="kpi-sub"><span>{totalSubmissions} Total Submissions</span></div>
         </div>
 
         <div className="kpi-card">
-          <div className="kpi-head"><span>Assigned Agents</span></div>
+          <div className="kpi-head"><span>Total Agents</span></div>
           <div className="kpi-value">{assignedAgentsCount}</div>
-          <div className="kpi-sub"><span>Allowed Access</span></div>
+          <div className="kpi-sub"><span>Across the Organization</span></div>
         </div>
       </div>
 
@@ -115,7 +114,7 @@ export default function AdminOverview({
 
           {pendingSales.length === 0 ? (
             <div className="empty-qa-box">
-              <span>All submitted deals for {activeProject?.name} have been reviewed.</span>
+              <span>All submitted deals across every campaign have been reviewed.</span>
             </div>
           ) : (
             <div className="minimal-list">
@@ -183,6 +182,8 @@ export default function AdminOverview({
 
         <SalesLeaderboard currentUser={currentUser} />
       </div>
+
+      <PerformanceReport sales={sales} />
 
       {/* Floating Team Messenger (bottom corner) */}
       <DashboardMessenger currentUser={currentUser} users={users} onSendMessage={onSendMessage} />
