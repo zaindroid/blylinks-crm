@@ -46,7 +46,7 @@ describe('AdminOverview combined (not campaign-scoped) totals', () => {
     salesApi.fetchLeaderboard.mockResolvedValue([]);
   });
 
-  it('counts approved/pending sales combined across every campaign, not just the selected one', () => {
+  it('counts sales combined across every campaign, not just the selected one', () => {
     setup({
       sales: [
         sale({ id: 'S1', campaignId: 'camp_solar', status: 'Approved' }),
@@ -55,18 +55,45 @@ describe('AdminOverview combined (not campaign-scoped) totals', () => {
       ]
     });
 
+    // Total Sales counts every sale SUBMITTED (any status), the same basis as the leaderboard
+    // and Performance Report use -- not Approved-only.
     expect(screen.getByText('Total Sales')).toBeInTheDocument();
     const totalSalesCard = screen.getByText('Total Sales').closest('.kpi-card');
-    expect(totalSalesCard).toHaveTextContent('2'); // both Approved sales, from both campaigns
+    expect(totalSalesCard).toHaveTextContent('3');
 
     const pendingCard = screen.getByText('Pending Review').closest('.kpi-card');
     expect(pendingCard).toHaveTextContent('1');
+  });
+
+  it('Approval Rate shows the approved count against the total, not a redundant repeat of Total Sales', () => {
+    setup({
+      sales: [
+        sale({ id: 'S1', status: 'Approved' }),
+        sale({ id: 'S2', status: 'Pending' })
+      ]
+    });
+    const approvalCard = screen.getByText('Approval Rate').closest('.kpi-card');
+    expect(approvalCard).toHaveTextContent('50%');
+    expect(approvalCard).toHaveTextContent('1 of 2 Approved');
   });
 
   it('shows the total agent count, not just the selected campaign\'s assigned agents', () => {
     setup();
     const agentsCard = screen.getByText('Total Agents').closest('.kpi-card');
     expect(agentsCard).toHaveTextContent('2'); // both Agents in USERS, not just camp_solar's one
+  });
+
+  it('"Sales Today by Campaign" counts every sale submitted today, not just Approved ones', () => {
+    const today = new Date().toISOString();
+    setup({
+      sales: [
+        sale({ id: 'S1', campaignId: 'camp_solar', status: 'Approved', saleDateIso: today }),
+        sale({ id: 'S2', campaignId: 'camp_solar', status: 'Pending', saleDateIso: today }),
+        sale({ id: 'S3', campaignId: 'camp_solar', status: 'Rejected', saleDateIso: today })
+      ]
+    });
+    const card = screen.getByText('Sales Today by Campaign').closest('.card');
+    expect(card).toHaveTextContent('3 submitted today');
   });
 
   it('includes the Performance Report with a combined total across campaigns', () => {

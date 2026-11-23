@@ -22,25 +22,26 @@ export default function DashboardMessenger({ currentUser, users = [], onSendMess
         <style>{`
           .floating-messenger-bubble {
             position: fixed;
-            bottom: 0;
-            left: 50%;
-            transform: translateX(-50%);
+            bottom: 20px;
+            /* --sidebar-width is the nav's widest (expanded) state -- offsetting from that, not
+               a bare 20px, keeps this clear of the nav even when it isn't collapsed. */
+            left: calc(var(--sidebar-width, 252px) + 20px);
             display: flex;
             align-items: center;
             gap: 0.5rem;
             background: var(--accent);
             color: #fff;
             border: none;
-            padding: 0.7rem 1.4rem;
-            border-radius: 14px 14px 0 0;
+            padding: 0.7rem 1.1rem;
+            border-radius: 999px;
             font-size: 0.85rem;
             font-weight: 700;
             cursor: pointer;
-            box-shadow: 0 -6px 24px rgba(0,0,0,0.18);
+            box-shadow: 0 10px 28px rgba(0,0,0,0.22);
             z-index: 950;
             transition: transform 0.15s ease;
           }
-          .floating-messenger-bubble:hover { transform: translateX(-50%) translateY(-3px); }
+          .floating-messenger-bubble:hover { transform: translateY(-3px); }
           .floating-messenger-badge {
             background: var(--status-error);
             color: #fff;
@@ -71,26 +72,34 @@ export default function DashboardMessenger({ currentUser, users = [], onSendMess
       <ChatWindow variant="inline" visible currentUser={currentUser} users={users} onSendMessage={onSendMessage} />
 
       <style>{`
+        /* Docked to the bottom-left corner, like a conventional support-chat widget, instead of
+           floating in the bottom-center of the screen. Bottom-RIGHT is already the anchor for
+           TaskNotificationDrawer's own pill stack (the "Tasks & Callbacks" button and the
+           minimized-chat-drawer pill), so this uses the opposite corner rather than stacking on
+           top of that. ChatWindow's own narrow-screen layout is a viewport media query, not a
+           container query, so it won't kick in here just from this panel being narrow -- 440px
+           keeps its two-column (conversation list + thread) layout comfortably legible rather
+           than switching layouts. Tall enough to actually read a conversation in, unlike the old
+           360px strip. */
         .floating-messenger-panel {
           position: fixed;
-          bottom: 0;
-          left: 50%;
-          transform: translateX(-50%);
-          width: min(760px, calc(100vw - 32px));
+          bottom: 20px;
+          left: calc(var(--sidebar-width, 252px) + 20px);
+          width: min(440px, calc(100vw - var(--sidebar-width, 252px) - 40px));
+          height: min(560px, calc(100vh - 140px));
           background: var(--bg-card);
           border: 1px solid var(--accent);
-          border-bottom: none;
-          border-radius: 18px 18px 0 0;
-          box-shadow: 0 -18px 44px rgba(0,0,0,0.26);
+          border-radius: 16px;
+          box-shadow: 0 18px 44px rgba(0,0,0,0.26);
           z-index: 950;
           display: flex;
           flex-direction: column;
           overflow: hidden;
-          animation: floatingMessengerSnapUp 0.32s cubic-bezier(0.2, 1.1, 0.4, 1);
+          animation: floatingMessengerSlideIn 0.22s ease;
         }
-        @keyframes floatingMessengerSnapUp {
-          from { transform: translateX(-50%) translateY(100%); }
-          to { transform: translateX(-50%) translateY(0); }
+        @keyframes floatingMessengerSlideIn {
+          from { transform: translateY(16px); opacity: 0; }
+          to { transform: translateY(0); opacity: 1; }
         }
         .floating-messenger-header {
           display: flex;
@@ -104,6 +113,8 @@ export default function DashboardMessenger({ currentUser, users = [], onSendMess
         .floating-messenger-title { display: flex; align-items: center; gap: 0.45rem; font-weight: 700; font-size: 0.85rem; }
         .floating-messenger-collapse { color: #fff; }
         .floating-messenger-collapse:hover { background: rgba(255,255,255,0.18); }
+        /* Fill the whole panel body instead of ChatWindow's default fixed 360px inline height. */
+        .floating-messenger-panel .chat-window--inline { flex: 1; height: auto; min-height: 0; }
       `}</style>
     </div>
   );

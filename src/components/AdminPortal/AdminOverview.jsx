@@ -44,14 +44,14 @@ export default function AdminOverview({
 
   const assignedAgentsCount = users.filter(u => u.role === 'Agent').length;
 
-  // Sales Today by Campaign (all campaigns, approved sales made today)
+  // Sales Today by Campaign (all campaigns, every sale SUBMITTED today -- any status, same
+  // "submitted" basis the leaderboard and Performance Report use, not just Approved ones).
   const salesTodayByCampaign = projects.map(p => {
-    const todaysApproved = sales.filter(s => s.campaignId === p.id && s.status === 'Approved' && isToday(s.saleDateIso));
+    const todaysSubmitted = sales.filter(s => s.campaignId === p.id && isToday(s.saleDateIso));
     return {
       id: p.id,
       name: p.name,
-      count: todaysApproved.length,
-      revenue: todaysApproved.reduce((sum, s) => sum + Number(s.amount), 0)
+      count: todaysSubmitted.length
     };
   });
 
@@ -80,8 +80,8 @@ export default function AdminOverview({
       <div className="kpi-grid">
         <div className="kpi-card">
           <div className="kpi-head"><span>Total Sales</span></div>
-          <div className="kpi-value">{approvedSales.length}</div>
-          <div className="kpi-sub"><span className="text-success">Approved, All Campaigns</span></div>
+          <div className="kpi-value">{totalSubmissions}</div>
+          <div className="kpi-sub"><span className="text-success">Submitted, All Campaigns</span></div>
         </div>
 
         <div className="kpi-card">
@@ -93,7 +93,7 @@ export default function AdminOverview({
         <div className="kpi-card">
           <div className="kpi-head"><span>Approval Rate</span></div>
           <div className="kpi-value">{approvalRate}%</div>
-          <div className="kpi-sub"><span>{totalSubmissions} Total Submissions</span></div>
+          <div className="kpi-sub"><span>{approvedSales.length} of {totalSubmissions} Approved</span></div>
         </div>
 
         <div className="kpi-card">
@@ -165,15 +165,14 @@ export default function AdminOverview({
           </div>
           <div className="minimal-list">
             {salesTodayByCampaign.every(c => c.count === 0) ? (
-              <div className="empty-state-sm">No approved sales logged today yet.</div>
+              <div className="empty-state-sm">No sales submitted today yet.</div>
             ) : (
               salesTodayByCampaign.map(c => (
                 <div key={c.id} className="minimal-list-item">
                   <div>
                     <div className="item-title">{c.name}</div>
-                    <div className="item-desc">{c.count} sale{c.count === 1 ? '' : 's'}</div>
+                    <div className="item-desc">{c.count} submitted today</div>
                   </div>
-                  <span className="font-mono text-accent">{formatPKR(c.revenue)}</span>
                 </div>
               ))
             )}

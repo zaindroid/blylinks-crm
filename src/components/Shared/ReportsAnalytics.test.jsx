@@ -5,8 +5,14 @@ import userEvent from '@testing-library/user-event';
 import ReportsAnalytics from './ReportsAnalytics';
 
 const sale = (over) => ({
-  id: 'S1', customerName: 'Cust', agentName: 'Ayesha', projectName: 'Solar', amount: 100,
-  status: 'Approved', date: '9/1/2026', saleDateIso: '2026-09-01T10:00:00.000Z', ...over
+  id: 'S1', customerName: 'Cust', phone: '5551234567', phone2: '', email: 'cust@example.com',
+  address: '123 Main St', apt: '', city: 'Austin', state: 'TX', zipCode: '78701',
+  agentName: 'Ayesha', projectName: 'Solar', closerName: 'Hammad', amount: 100,
+  status: 'Approved', date: '9/1/2026', saleDateIso: '2026-09-01T10:00:00.000Z',
+  supplierName: 'BrightVolt', electricUtility: 'Oncor', electricAccountType: 'Meter',
+  electricAccountNumber: 'EL-1', electricRate: '0.12', gasUtility: '', gasAccountType: '',
+  gasAccountNumber: '', confirmationNumber: 'CONF-1', agentNotes: 'Note, with a comma',
+  qaNotes: '', verifiedBy: '', ...over
 });
 
 const setup = (props = {}) => render(
@@ -56,5 +62,26 @@ describe('ReportsAnalytics sales report custom date range', () => {
     expect(() => fireEvent.click(exportButtons[0])).not.toThrow();
 
     clickSpy.mockRestore();
+  });
+
+  it('the sales CSV carries full order detail, not just the handful of summary columns', () => {
+    setup({ sales: [sale()] });
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+    const setAttrSpy = vi.spyOn(HTMLAnchorElement.prototype, 'setAttribute');
+
+    fireEvent.click(screen.getAllByRole('button', { name: /export csv/i })[0]);
+
+    const hrefCall = setAttrSpy.mock.calls.find(([name]) => name === 'href');
+    const csv = decodeURIComponent(hrefCall[1]);
+    for (const expected of ['Phone', 'Email', 'Address', 'City', 'State', 'Zip Code', 'Closer Name', 'Supplier Name', 'Electric Utility', 'Confirmation Number', 'Agent Notes', 'Verified By']) {
+      expect(csv).toContain(expected);
+    }
+    expect(csv).toContain('5551234567');
+    expect(csv).toContain('123 Main St');
+    // A comma inside a field (an agent note) must not get mistaken for a column separator.
+    expect(csv).toContain('"Note, with a comma"');
+
+    clickSpy.mockRestore();
+    setAttrSpy.mockRestore();
   });
 });

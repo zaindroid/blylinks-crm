@@ -8,13 +8,32 @@ export default function ReportsAnalytics({ sales, attendanceLogs, leads, payroll
   const [salesTo, setSalesTo] = useState('');
   const salesInRange = filterByDateRange(sales, 'saleDateIso', salesRangePreset, salesFrom, salesTo);
 
+  // A bare `.join(',')` breaks the moment any free-text field (a customer name, an agent note)
+  // happens to contain a comma, quote or newline -- which the comprehensive sales report is full
+  // of (addresses, notes). Quote every field and escape embedded quotes, the standard CSV rule.
+  const csvCell = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+
   const exportReportCSV = (reportType) => {
     let headers = [];
     let rows = [];
 
     if (reportType === 'sales') {
-      headers = ['Sale ID', 'Customer Name', 'Agent Name', 'Campaign', 'Amount ($)', 'Status', 'Date'];
-      rows = salesInRange.map(s => [s.id, s.customerName, s.agentName, s.projectName, s.amount, s.status, s.date]);
+      headers = [
+        'Sale ID', 'Customer Name', 'Phone', 'Phone 2', 'Email',
+        'Address', 'Apt/Unit', 'City', 'State', 'Zip Code',
+        'Campaign', 'Agent Name', 'Closer Name', 'Amount ($)', 'Status', 'Sale Date',
+        'Supplier Name', 'Electric Utility', 'Electric Account Type', 'Electric Account Number', 'Electric Rate',
+        'Gas Utility', 'Gas Account Type', 'Gas Account Number', 'Confirmation Number',
+        'Agent Notes', 'QA Notes', 'Verified By'
+      ];
+      rows = salesInRange.map(s => [
+        s.id, s.customerName, s.phone, s.phone2, s.email,
+        s.address, s.apt, s.city, s.state, s.zipCode,
+        s.projectName, s.agentName, s.closerName, s.amount, s.status, s.date,
+        s.supplierName, s.electricUtility, s.electricAccountType, s.electricAccountNumber, s.electricRate,
+        s.gasUtility, s.gasAccountType, s.gasAccountNumber, s.confirmationNumber,
+        s.agentNotes, s.qaNotes, s.verifiedBy
+      ]);
     } else if (reportType === 'attendance') {
       headers = ['Log ID', 'Agent Name', 'Date', 'Clock In', 'Clock Out', 'Hours Worked', 'Status'];
       rows = attendanceLogs.map(a => [a.id, a.agentName, a.date, a.clockIn, a.clockOut, a.totalHours, a.status]);
@@ -23,7 +42,7 @@ export default function ReportsAnalytics({ sales, attendanceLogs, leads, payroll
       rows = payroll.map(p => [p.id, p.agentName, p.month, p.baseSalary, p.commission, p.bonus, p.deductions, p.netSalary, p.status]);
     }
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.map(csvCell).join(','), ...rows.map(e => e.map(csvCell).join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
@@ -50,7 +69,7 @@ export default function ReportsAnalytics({ sales, attendanceLogs, leads, payroll
               <Download size={14} /> Export CSV
             </button>
           </div>
-          <p className="text-muted text-sm margin-bottom">Includes deal IDs, verified customer names, agent submissions, sale amounts and QA review notes.</p>
+          <p className="text-muted text-sm margin-bottom">Full order detail per sale: contact info, address, campaign/agent, utility & account numbers, amount, status and all notes.</p>
           <div className="sales-report-range-row margin-bottom">
             <select className="form-select text-sm" aria-label="Sales report date range" value={salesRangePreset} onChange={(e) => setSalesRangePreset(e.target.value)}>
               {DATE_RANGE_PRESETS.map(p => <option key={p} value={p}>{p}</option>)}
