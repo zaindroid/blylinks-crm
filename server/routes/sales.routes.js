@@ -63,14 +63,25 @@ function reshapeSale(row) {
 // safe to show org-wide as a friendly leaderboard. Ranked by number of sales SUBMITTED (every
 // status counts -- Pending/Approved/Rejected alike; this measures submission activity, not
 // closed deals), for this calendar month; all-time count and approved revenue ride along as
-// context only, never as the ranking itself.
+// context only, never as the ranking itself. A sale with both an electric AND a gas account
+// number is two utility enrollments in one submission, so it counts as 2 sales, not 1; the
+// "WHEN s.id IS NULL THEN 0" guard keeps an agent with zero sales at 0 rather than 1, since the
+// LEFT JOIN otherwise leaves every column on that row (including the account numbers) NULL.
 router.get('/leaderboard', asyncHandler(async (req, res) => {
   const { rows } = await pool.query(`
     SELECT u.id AS agent_id, u.name AS agent_name,
-      COUNT(s.id) AS submitted_count,
-      COUNT(s.id) FILTER (
+      COALESCE(SUM(CASE
+        WHEN s.id IS NULL THEN 0
+        WHEN COALESCE(trim(s.electric_account_number), '') <> '' AND COALESCE(trim(s.gas_account_number), '') <> '' THEN 2
+        ELSE 1
+      END), 0) AS submitted_count,
+      COALESCE(SUM(CASE
+        WHEN s.id IS NULL THEN 0
+        WHEN COALESCE(trim(s.electric_account_number), '') <> '' AND COALESCE(trim(s.gas_account_number), '') <> '' THEN 2
+        ELSE 1
+      END) FILTER (
         WHERE date_trunc('month', s.sale_date AT TIME ZONE 'Asia/Karachi') = date_trunc('month', now() AT TIME ZONE 'Asia/Karachi')
-      ) AS month_submitted_count,
+      ), 0) AS month_submitted_count,
       COALESCE(SUM(s.amount) FILTER (WHERE s.status = 'Approved'), 0) AS approved_revenue_pkr
     FROM users u
     LEFT JOIN sales s ON s.agent_id = u.id

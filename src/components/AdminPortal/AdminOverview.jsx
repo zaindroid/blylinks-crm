@@ -9,6 +9,7 @@ import {
   Target
 } from 'lucide-react';
 import { formatPKR } from '../../utils/currency';
+import { sumSaleUnits } from '../../utils/saleUnits';
 import SalesLeaderboard from '../Shared/SalesLeaderboard';
 import DashboardMessenger from '../Shared/DashboardMessenger';
 import PerformanceReport from '../Shared/PerformanceReport';
@@ -39,8 +40,13 @@ export default function AdminOverview({
   const approvedSales = sales.filter(s => s.status === 'Approved');
   const pendingSales = sales.filter(s => s.status === 'Pending');
 
-  const totalSubmissions = sales.length;
-  const approvalRate = totalSubmissions > 0 ? Math.round((approvedSales.length / totalSubmissions) * 100) : 0;
+  // "Number of sales" (Total Sales, Approval Rate) is counted in sale UNITS, not submission rows:
+  // a sale with only electric or only gas account info is 1 sale, but both together is 2 -- two
+  // separate utility enrollments in one submission. pendingSales.length above stays a row count
+  // since that's a QA review queue size, not a sales-volume figure.
+  const totalSubmissions = sumSaleUnits(sales);
+  const approvedSaleUnits = sumSaleUnits(approvedSales);
+  const approvalRate = totalSubmissions > 0 ? Math.round((approvedSaleUnits / totalSubmissions) * 100) : 0;
 
   const assignedAgentsCount = users.filter(u => u.role === 'Agent').length;
 
@@ -51,7 +57,7 @@ export default function AdminOverview({
     return {
       id: p.id,
       name: p.name,
-      count: todaysSubmitted.length
+      count: sumSaleUnits(todaysSubmitted)
     };
   });
 
@@ -93,7 +99,7 @@ export default function AdminOverview({
         <div className="kpi-card">
           <div className="kpi-head"><span>Approval Rate</span></div>
           <div className="kpi-value">{approvalRate}%</div>
-          <div className="kpi-sub"><span>{approvedSales.length} of {totalSubmissions} Approved</span></div>
+          <div className="kpi-sub"><span>{approvedSaleUnits} of {totalSubmissions} Approved</span></div>
         </div>
 
         <div className="kpi-card">

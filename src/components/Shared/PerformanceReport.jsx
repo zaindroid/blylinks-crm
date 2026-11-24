@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { BarChart2, CalendarRange } from 'lucide-react';
 import { DATE_RANGE_PRESETS, filterByDateRange } from '../../utils/dateFilters';
+import { saleUnitCount, sumSaleUnits } from '../../utils/saleUnits';
 import PieChart from './PieChart';
 
 // Org-wide performance report: every sale SUBMITTED (any status -- same definition the leaderboard
@@ -21,7 +22,7 @@ export default function PerformanceReport({ sales }) {
   const byCampaign = useMemo(() => {
     const counts = new Map();
     for (const s of inRange) {
-      counts.set(s.campaignId, { label: s.projectName || s.campaignId, value: (counts.get(s.campaignId)?.value || 0) + 1 });
+      counts.set(s.campaignId, { label: s.projectName || s.campaignId, value: (counts.get(s.campaignId)?.value || 0) + saleUnitCount(s) });
     }
     return [...counts.values()].sort((a, b) => b.value - a.value);
   }, [inRange]);
@@ -29,10 +30,12 @@ export default function PerformanceReport({ sales }) {
   const byAgent = useMemo(() => {
     const counts = new Map();
     for (const s of inRange) {
-      counts.set(s.agentId, { label: s.agentName || s.agentId, value: (counts.get(s.agentId)?.value || 0) + 1 });
+      counts.set(s.agentId, { label: s.agentName || s.agentId, value: (counts.get(s.agentId)?.value || 0) + saleUnitCount(s) });
     }
     return [...counts.values()].sort((a, b) => b.value - a.value);
   }, [inRange]);
+
+  const totalSaleUnits = useMemo(() => sumSaleUnits(inRange), [inRange]);
 
   return (
     <div className="card performance-report">
@@ -53,7 +56,7 @@ export default function PerformanceReport({ sales }) {
         </div>
       </div>
 
-      <div className="performance-report-total">Total sales submitted: <span className="font-bold text-accent">{inRange.length}</span></div>
+      <div className="performance-report-total">Total sales submitted: <span className="font-bold text-accent">{totalSaleUnits}</span></div>
 
       <div className="grid-2">
         <div className="performance-report-section">

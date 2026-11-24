@@ -96,6 +96,34 @@ describe('AdminOverview combined (not campaign-scoped) totals', () => {
     expect(card).toHaveTextContent('3 submitted today');
   });
 
+  it('counts a sale with both electric AND gas account info as 2 sales, for Total Sales and Approval Rate alike', () => {
+    setup({
+      sales: [
+        sale({ id: 'S1', status: 'Approved', electricAccountNumber: 'EL-1' }), // electric only -> 1
+        sale({ id: 'S2', status: 'Approved', gasAccountNumber: 'GAS-1' }), // gas only -> 1
+        sale({ id: 'S3', status: 'Approved', electricAccountNumber: 'EL-2', gasAccountNumber: 'GAS-2' }) // both -> 2
+      ]
+    });
+
+    // 1 + 1 + 2 = 4 sales total, all Approved -> 100%, "4 of 4 Approved".
+    const totalSalesCard = screen.getByText('Total Sales').closest('.kpi-card');
+    expect(totalSalesCard).toHaveTextContent('4');
+    const approvalCard = screen.getByText('Approval Rate').closest('.kpi-card');
+    expect(approvalCard).toHaveTextContent('100%');
+    expect(approvalCard).toHaveTextContent('4 of 4 Approved');
+  });
+
+  it('"Sales Today by Campaign" counts a dual electric+gas sale as 2, not 1', () => {
+    const today = new Date().toISOString();
+    setup({
+      sales: [
+        sale({ id: 'S1', campaignId: 'camp_solar', status: 'Approved', saleDateIso: today, electricAccountNumber: 'EL-1', gasAccountNumber: 'GAS-1' })
+      ]
+    });
+    const card = screen.getByText('Sales Today by Campaign').closest('.card');
+    expect(card).toHaveTextContent('2 submitted today');
+  });
+
   it('includes the Performance Report with a combined total across campaigns', () => {
     setup({
       sales: [

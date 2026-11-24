@@ -348,6 +348,24 @@ describe('GET /api/sales/leaderboard', () => {
     expect(Object.keys(rowA).sort()).toEqual(['agentId', 'agentName', 'approvedRevenuePkr', 'monthSubmittedCount', 'submittedCount'].sort());
   });
 
+  it('counts a sale with both electric AND gas account info as 2 sales, not 1', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+
+    await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 100, electricAccountNumber: 'EL-1' }); // electric only -> 1
+    await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'Cust', phone: '5551234568', amount: 100, gasAccountNumber: 'GAS-1' }); // gas only -> 1
+    await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'Cust', phone: '5551234569', amount: 100, electricAccountNumber: 'EL-2', gasAccountNumber: 'GAS-2' }); // both -> 2
+
+    const res = await request(app).get('/api/sales/leaderboard').set('Authorization', `Bearer ${admin.token}`);
+    const row = res.body.find(r => r.agentId === agent.id);
+    expect(row.submittedCount).toBe(4); // 1 + 1 + 2, not 3 rows
+    expect(row.monthSubmittedCount).toBe(4);
+  });
+
   it('excludes a deactivated agent', async () => {
     const admin = await createAdmin();
     const campaignId = await createCampaign(admin.token);

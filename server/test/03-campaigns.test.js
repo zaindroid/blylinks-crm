@@ -81,6 +81,20 @@ describe('campaigns', () => {
     expect(found.totalRevenuePkr).toBe(1000);
   });
 
+  it('totalSalesCount counts an Approved sale with both electric AND gas account info as 2, not 1', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+
+    const sale = await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 1000, electricAccountNumber: 'EL-1', gasAccountNumber: 'GAS-1' });
+    await request(app).patch(`/api/sales/${sale.body.id}/approve`).set('Authorization', `Bearer ${admin.token}`).send({});
+
+    const list = await request(app).get('/api/campaigns').set('Authorization', `Bearer ${admin.token}`);
+    const found = list.body.find(c => c.id === campaignId);
+    expect(found.totalSalesCount).toBe(2);
+  });
+
   it('toggle-status flips Active/Inactive and back', async () => {
     const admin = await createAdmin();
     const campaignId = await createCampaign(admin.token);
@@ -113,6 +127,20 @@ describe('monthly sales count (what the monthly sales goal is measured against)'
     const camp = list.body.find(c => c.id === campaignId);
     expect(camp.monthSalesCount).toBe(2); // the pending one + the approved one
     expect(camp.monthlySalesGoal).toBe(20);
+  });
+
+  it('counts a sale with both electric AND gas account info as 2 sales, not 1', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token, { monthlySalesGoal: 20 });
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+
+    await submit(agent.token, campaignId, { electricAccountNumber: 'EL-1' }); // electric only -> 1
+    await submit(agent.token, campaignId, { gasAccountNumber: 'GAS-1' }); // gas only -> 1
+    await submit(agent.token, campaignId, { electricAccountNumber: 'EL-2', gasAccountNumber: 'GAS-2' }); // both -> 2
+
+    const list = await request(app).get('/api/campaigns').set('Authorization', `Bearer ${admin.token}`);
+    const camp = list.body.find(c => c.id === campaignId);
+    expect(camp.monthSalesCount).toBe(4); // 1 + 1 + 2, not 3 rows
   });
 
   it('an assigned agent sees the count for their own campaign (it drives their celebration tracker)', async () => {
