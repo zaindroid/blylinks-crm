@@ -46,26 +46,36 @@ export default function SaleDetailModal({ sale, onClose }) {
 
           <div className="sale-detail-section-title">Order Info</div>
           <div className="sale-detail-grid">
+            <Field label="Sale Type" value={sale.saleType} />
             <Field label="Supplier Name" value={sale.supplierName} />
             <Field label="Confirmation Number" value={sale.confirmationNumber} />
             <Field label="Amount" value={formatPKR(sale.amount)} />
             <Field label="Closer Name" value={sale.closerName} />
           </div>
 
-          <div className="sale-detail-section-title">Electric</div>
-          <div className="sale-detail-grid">
-            <Field label="Utility" value={sale.electricUtility} />
-            <Field label="Account Number Type" value={sale.electricAccountType} />
-            <Field label="Account Number" value={sale.electricAccountNumber} />
-            <Field label="Rate" value={sale.electricRate} />
-          </div>
+          {/* A legacy sale with no saleType recorded shows both sections, as before. */}
+          {sale.saleType !== 'Gas' && (
+            <>
+              <div className="sale-detail-section-title">Electric</div>
+              <div className="sale-detail-grid">
+                <Field label="Utility" value={sale.electricUtility} />
+                <Field label="Account Number Type" value={sale.electricAccountType} />
+                <Field label="Account Number" value={sale.electricAccountNumber} />
+                <Field label="Rate" value={sale.electricRate} />
+              </div>
+            </>
+          )}
 
-          <div className="sale-detail-section-title">Gas</div>
-          <div className="sale-detail-grid">
-            <Field label="Utility" value={sale.gasUtility} />
-            <Field label="Account Number Type" value={sale.gasAccountType} />
-            <Field label="Account Number" value={sale.gasAccountNumber} />
-          </div>
+          {sale.saleType !== 'Electric' && (
+            <>
+              <div className="sale-detail-section-title">Gas</div>
+              <div className="sale-detail-grid">
+                <Field label="Utility" value={sale.gasUtility} />
+                <Field label="Account Number Type" value={sale.gasAccountType} />
+                <Field label="Account Number" value={sale.gasAccountNumber} />
+              </div>
+            </>
+          )}
 
           <div className="sale-detail-section-title">Notes</div>
           <div className="sale-detail-notes">{sale.agentNotes || '—'}</div>

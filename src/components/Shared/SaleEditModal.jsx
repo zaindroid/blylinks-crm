@@ -25,7 +25,7 @@ const TEXT_FIELDS = [
 
 export default function SaleEditModal({ sale, onSave, onClose }) {
   const [form, setForm] = useState(() => {
-    const initial = { status: sale.status, amount: sale.amount, agentNotes: sale.agentNotes || '' };
+    const initial = { status: sale.status, amount: sale.amount, agentNotes: sale.agentNotes || '', saleType: sale.saleType || '' };
     for (const [key] of TEXT_FIELDS) initial[key] = sale[key] || '';
     return initial;
   });
@@ -77,6 +77,15 @@ export default function SaleEditModal({ sale, onSave, onClose }) {
                   value={form.amount}
                   onChange={(e) => setFieldValue('amount', e.target.value)}
                 />
+              </div>
+              <div className="form-group">
+                <label className="form-label">Sale Type</label>
+                <select className="form-select" aria-label="Sale Type" value={form.saleType} onChange={(e) => setFieldValue('saleType', e.target.value)}>
+                  <option value="">—</option>
+                  <option value="Electric">Electric</option>
+                  <option value="Gas">Gas</option>
+                  <option value="Electric and Gas">Electric and Gas</option>
+                </select>
               </div>
             </div>
 

@@ -90,6 +90,58 @@ describe('SaleSubmissionModal', () => {
     expect(onSubmitSale.mock.calls[0][0].closerName).toBe('Hammad Arshad');
   });
 
+  it('defaults to Sale Type "Electric", showing only the Electric fields', () => {
+    renderModal();
+    expect(screen.getByLabelText(/sale type/i)).toHaveValue('Electric');
+    expect(screen.getByText('Electric Utility')).toBeInTheDocument();
+    expect(screen.queryByText('Gas Utility')).not.toBeInTheDocument();
+  });
+
+  it('switching Sale Type to "Gas" shows only the Gas fields', async () => {
+    const user = userEvent.setup();
+    renderModal();
+    await user.selectOptions(screen.getByLabelText(/sale type/i), 'Gas');
+    expect(screen.queryByText('Electric Utility')).not.toBeInTheDocument();
+    expect(screen.getByText('Gas Utility')).toBeInTheDocument();
+  });
+
+  it('switching Sale Type to "Electric and Gas" shows both field sets', async () => {
+    const user = userEvent.setup();
+    renderModal();
+    await user.selectOptions(screen.getByLabelText(/sale type/i), 'Electric and Gas');
+    expect(screen.getByText('Electric Utility')).toBeInTheDocument();
+    expect(screen.getByText('Gas Utility')).toBeInTheDocument();
+  });
+
+  it('forwards the chosen Sale Type on submit', async () => {
+    const onSubmitSale = vi.fn();
+    const user = userEvent.setup();
+    renderModal({ onSubmitSale });
+
+    await user.selectOptions(screen.getByLabelText(/sale type/i), 'Electric and Gas');
+    await user.type(screen.getByPlaceholderText(/johnathan sterling/i), 'Jane Doe');
+    await user.type(screen.getByPlaceholderText(/\+1 \(555\) 000-0000/i), '5551234567');
+    await user.click(screen.getByRole('button', { name: /submit order/i }));
+
+    expect(onSubmitSale.mock.calls[0][0].saleType).toBe('Electric and Gas');
+  });
+
+  it('switching away from Electric clears any Electric fields already typed in, so they don\'t ride along on a Gas-only sale', async () => {
+    const onSubmitSale = vi.fn();
+    const user = userEvent.setup();
+    renderModal({ onSubmitSale });
+
+    // TextField doesn't wire a `for`/`id` pair, so find the input via its label's sibling instead.
+    const electricUtilityInput = screen.getByText('Electric Utility').closest('.form-group').querySelector('input');
+    await user.type(electricUtilityInput, 'Oncor');
+    await user.selectOptions(screen.getByLabelText(/sale type/i), 'Gas');
+    await user.type(screen.getByPlaceholderText(/johnathan sterling/i), 'Jane Doe');
+    await user.type(screen.getByPlaceholderText(/\+1 \(555\) 000-0000/i), '5551234567');
+    await user.click(screen.getByRole('button', { name: /submit order/i }));
+
+    expect(onSubmitSale.mock.calls[0][0].electricUtility).toBe('');
+  });
+
   it('resets the form after a successful submit', async () => {
     const user = userEvent.setup();
     renderModal();

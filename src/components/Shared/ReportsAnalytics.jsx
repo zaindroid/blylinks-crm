@@ -21,7 +21,7 @@ export default function ReportsAnalytics({ sales, attendanceLogs, leads, payroll
       headers = [
         'Sale ID', 'Customer Name', 'Phone', 'Phone 2', 'Email',
         'Address', 'Apt/Unit', 'City', 'State', 'Zip Code',
-        'Campaign', 'Agent Name', 'Closer Name', 'Amount ($)', 'Status', 'Sale Date',
+        'Campaign', 'Agent Name', 'Closer Name', 'Amount ($)', 'Status', 'Sale Date', 'Sale Type',
         'Supplier Name', 'Electric Utility', 'Electric Account Type', 'Electric Account Number', 'Electric Rate',
         'Gas Utility', 'Gas Account Type', 'Gas Account Number', 'Confirmation Number',
         'Agent Notes', 'QA Notes', 'Verified By'
@@ -29,7 +29,7 @@ export default function ReportsAnalytics({ sales, attendanceLogs, leads, payroll
       rows = salesInRange.map(s => [
         s.id, s.customerName, s.phone, s.phone2, s.email,
         s.address, s.apt, s.city, s.state, s.zipCode,
-        s.projectName, s.agentName, s.closerName, s.amount, s.status, s.date,
+        s.projectName, s.agentName, s.closerName, s.amount, s.status, s.date, s.saleType,
         s.supplierName, s.electricUtility, s.electricAccountType, s.electricAccountNumber, s.electricRate,
         s.gasUtility, s.gasAccountType, s.gasAccountNumber, s.confirmationNumber,
         s.agentNotes, s.qaNotes, s.verifiedBy

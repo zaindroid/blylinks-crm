@@ -59,12 +59,12 @@ describe('PerformanceReport', () => {
     expect(screen.getByText(/total sales submitted:/i).parentElement).toHaveTextContent('2');
   });
 
-  it('counts a sale with both electric AND gas account info as 2 sales, not 1', () => {
+  it('counts an "Electric and Gas" Sale Type as 2 sales, not 1', () => {
     const now = new Date().toISOString();
     render(<PerformanceReport sales={[
-      sale({ id: 'S1', campaignId: 'c1', projectName: 'Solar', agentId: 'a1', agentName: 'Ayesha Khan', saleDateIso: now, electricAccountNumber: 'EL-1' }), // electric only -> 1
-      sale({ id: 'S2', campaignId: 'c1', projectName: 'Solar', agentId: 'a1', agentName: 'Ayesha Khan', saleDateIso: now, gasAccountNumber: 'GAS-1' }), // gas only -> 1
-      sale({ id: 'S3', campaignId: 'c1', projectName: 'Solar', agentId: 'a1', agentName: 'Ayesha Khan', saleDateIso: now, electricAccountNumber: 'EL-2', gasAccountNumber: 'GAS-2' }) // both -> 2
+      sale({ id: 'S1', campaignId: 'c1', projectName: 'Solar', agentId: 'a1', agentName: 'Ayesha Khan', saleDateIso: now, saleType: 'Electric' }), // 1
+      sale({ id: 'S2', campaignId: 'c1', projectName: 'Solar', agentId: 'a1', agentName: 'Ayesha Khan', saleDateIso: now, saleType: 'Gas' }), // 1
+      sale({ id: 'S3', campaignId: 'c1', projectName: 'Solar', agentId: 'a1', agentName: 'Ayesha Khan', saleDateIso: now, saleType: 'Electric and Gas' }) // 2
     ]} />);
 
     // 1 + 1 + 2 = 4, not 3 rows.

@@ -209,6 +209,47 @@ describe('QASalesApproval Admin free-form sale edit', () => {
   });
 });
 
+describe('QASalesApproval list shows order details without opening the sale', () => {
+  it('shows date, phone, name, state, sale type, utility name and agent name in the row', async () => {
+    const user = userEvent.setup();
+    setup([
+      sale({
+        id: 'S1', customerName: 'Jane Doe', phone: '5551234567', state: 'TX', agentName: 'Ayesha Khan',
+        saleType: 'Electric', electricUtility: 'Oncor', date: '9/24/2026'
+      })
+    ]);
+    await user.selectOptions(screen.getByDisplayValue(/pending review only/i), 'All');
+
+    // "Ayesha Khan" also appears as an option in the agent-filter dropdown, so scope to the table.
+    const table = within(screen.getByRole('table'));
+    expect(table.getByText('9/24/2026')).toBeInTheDocument();
+    expect(table.getByText('5551234567')).toBeInTheDocument();
+    expect(table.getByText('Jane Doe')).toBeInTheDocument();
+    expect(table.getByText('TX')).toBeInTheDocument();
+    expect(table.getByText('Electric')).toBeInTheDocument();
+    expect(table.getByText('Oncor')).toBeInTheDocument();
+    expect(table.getByText('Ayesha Khan')).toBeInTheDocument();
+  });
+
+  it('shows both utility names, joined, for an Electric and Gas sale', async () => {
+    const user = userEvent.setup();
+    setup([
+      sale({ id: 'S1', saleType: 'Electric and Gas', electricUtility: 'Oncor', gasUtility: 'Atmos' })
+    ]);
+    await user.selectOptions(screen.getByDisplayValue(/pending review only/i), 'All');
+    expect(screen.getByText('Oncor / Atmos')).toBeInTheDocument();
+  });
+
+  it('shows the gas utility name for a Gas-only sale', async () => {
+    const user = userEvent.setup();
+    setup([
+      sale({ id: 'S1', saleType: 'Gas', gasUtility: 'Atmos' })
+    ]);
+    await user.selectOptions(screen.getByDisplayValue(/pending review only/i), 'All');
+    expect(screen.getByText('Atmos')).toBeInTheDocument();
+  });
+});
+
 describe('QASalesApproval search by phone', () => {
   it('finds a sale by phone 1 or phone 2, not just by name/agent/id', async () => {
     const user = userEvent.setup();

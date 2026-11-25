@@ -15,10 +15,10 @@ async function listCampaigns() {
       COALESCE(m.month_sales_count, 0) AS month_sales_count
     FROM campaigns c
     LEFT JOIN (
-      -- A sale with BOTH an electric and a gas account number is two utility enrollments in one
-      -- submission, so it counts as 2 sales here, not 1; a sale with only one (or neither) counts as 1.
+      -- A sale whose agent-picked Sale Type is "Electric and Gas" is two utility enrollments in one
+      -- submission, so it counts as 2 sales here, not 1; "Electric" or "Gas" alone counts as 1.
       SELECT campaign_id,
-        SUM(CASE WHEN COALESCE(trim(electric_account_number), '') <> '' AND COALESCE(trim(gas_account_number), '') <> '' THEN 2 ELSE 1 END) AS total_sales_count,
+        SUM(CASE WHEN sale_type = 'Electric and Gas' THEN 2 ELSE 1 END) AS total_sales_count,
         SUM(amount) AS total_revenue_pkr
       FROM sales
       WHERE status = 'Approved'
@@ -28,7 +28,7 @@ async function listCampaigns() {
       -- Sales logged this calendar month (Pakistan time), excluding rejected ones: this is what a
       -- "monthly sales goal" is measured against. totalSalesCount above is all-time and Approved-only.
       SELECT campaign_id,
-        SUM(CASE WHEN COALESCE(trim(electric_account_number), '') <> '' AND COALESCE(trim(gas_account_number), '') <> '' THEN 2 ELSE 1 END) AS month_sales_count
+        SUM(CASE WHEN sale_type = 'Electric and Gas' THEN 2 ELSE 1 END) AS month_sales_count
       FROM sales
       WHERE status <> 'Rejected'
         AND date_trunc('month', sale_date AT TIME ZONE 'Asia/Karachi') = date_trunc('month', now() AT TIME ZONE 'Asia/Karachi')

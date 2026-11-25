@@ -22,7 +22,8 @@ const FULL_ORDER = {
   confirmationNumber: 'CONF-5566',
   amount: 2500,
   agentNotes: 'Verbal TPV confirmed.',
-  closerName: 'Hammad Arshad'
+  closerName: 'Hammad Arshad',
+  saleType: 'Electric and Gas'
 };
 
 describe('sale submission', () => {
@@ -89,6 +90,27 @@ describe('sale submission', () => {
     expect(res.status).toBe(201);
     expect(res.body.status).toBe('Pending');
     expect(res.body.agentId).toBe(agentA.id); // not agentB, despite what the body claimed
+  });
+
+  it('rejects a saleType outside Electric / Gas / Electric and Gas', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+
+    const res = await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'Cust', phone: '5551234567', saleType: 'Water' });
+    expect(res.status).toBe(400);
+  });
+
+  it('saleType is optional -- a legacy-style submission without it is still accepted', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+
+    const res = await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'Cust', phone: '5551234567' });
+    expect(res.status).toBe(201);
+    expect(res.body.saleType).toBeNull();
   });
 
   it('an optional saleDate is honored; omitting it defaults to now', async () => {
@@ -292,6 +314,22 @@ describe('PATCH /api/sales/:id -- Admin free-form edit', () => {
 
     const badAmount = await request(app).patch(`/api/sales/${sale.body.id}`).set('Authorization', `Bearer ${admin.token}`).send({ amount: -5 });
     expect(badAmount.status).toBe(400);
+
+    const badSaleType = await request(app).patch(`/api/sales/${sale.body.id}`).set('Authorization', `Bearer ${admin.token}`).send({ saleType: 'Water' });
+    expect(badSaleType.status).toBe(400);
+  });
+
+  it('an Admin can correct the Sale Type', async () => {
+    const admin = await createAdmin();
+    const campaignId = await createCampaign(admin.token);
+    const agent = await createAgentViaApi(admin.token, [campaignId]);
+    const sale = await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
+      .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 100, saleType: 'Electric' });
+
+    const edit = await request(app).patch(`/api/sales/${sale.body.id}`).set('Authorization', `Bearer ${admin.token}`)
+      .send({ saleType: 'Electric and Gas' });
+    expect(edit.status).toBe(200);
+    expect(edit.body.saleType).toBe('Electric and Gas');
   });
 
   it('404s for a sale that does not exist', async () => {
@@ -348,17 +386,17 @@ describe('GET /api/sales/leaderboard', () => {
     expect(Object.keys(rowA).sort()).toEqual(['agentId', 'agentName', 'approvedRevenuePkr', 'monthSubmittedCount', 'submittedCount'].sort());
   });
 
-  it('counts a sale with both electric AND gas account info as 2 sales, not 1', async () => {
+  it('counts an "Electric and Gas" sale as 2 sales, not 1', async () => {
     const admin = await createAdmin();
     const campaignId = await createCampaign(admin.token);
     const agent = await createAgentViaApi(admin.token, [campaignId]);
 
     await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
-      .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 100, electricAccountNumber: 'EL-1' }); // electric only -> 1
+      .send({ campaignId, customerName: 'Cust', phone: '5551234567', amount: 100, saleType: 'Electric' }); // 1
     await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
-      .send({ campaignId, customerName: 'Cust', phone: '5551234568', amount: 100, gasAccountNumber: 'GAS-1' }); // gas only -> 1
+      .send({ campaignId, customerName: 'Cust', phone: '5551234568', amount: 100, saleType: 'Gas' }); // 1
     await request(app).post('/api/sales').set('Authorization', `Bearer ${agent.token}`)
-      .send({ campaignId, customerName: 'Cust', phone: '5551234569', amount: 100, electricAccountNumber: 'EL-2', gasAccountNumber: 'GAS-2' }); // both -> 2
+      .send({ campaignId, customerName: 'Cust', phone: '5551234569', amount: 100, saleType: 'Electric and Gas' }); // 2
 
     const res = await request(app).get('/api/sales/leaderboard').set('Authorization', `Bearer ${admin.token}`);
     const row = res.body.find(r => r.agentId === agent.id);

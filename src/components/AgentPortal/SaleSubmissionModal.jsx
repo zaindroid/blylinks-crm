@@ -13,6 +13,7 @@ const EMPTY_FORM = {
   phone2: '',
   email: '',
   supplierName: '',
+  saleType: 'Electric',
   electricUtility: '',
   electricAccountType: '',
   electricAccountNumber: '',
@@ -53,6 +54,20 @@ export default function SaleSubmissionModal({
   const [error, setError] = useState('');
 
   if (!isOpen) return null;
+
+  // Switching Sale Type also clears whichever service's fields just got hidden, so a value typed
+  // in before switching away doesn't silently ride along on a sale that no longer shows that section.
+  const handleSaleTypeChange = (saleType) => {
+    setFormData(f => {
+      const next = { ...f, saleType };
+      if (saleType === 'Gas') {
+        next.electricUtility = ''; next.electricAccountType = ''; next.electricAccountNumber = ''; next.electricRate = '';
+      } else if (saleType === 'Electric') {
+        next.gasUtility = ''; next.gasAccountType = ''; next.gasAccountNumber = '';
+      }
+      return next;
+    });
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -128,22 +143,46 @@ export default function SaleSubmissionModal({
               </div>
             </div>
 
-            <div className="sale-form-section-title">Electric</div>
-            <div className="grid-2">
-              <TextField label="Electric Utility" field="electricUtility" formData={formData} setFormData={setFormData} />
-              <TextField label="Electric Account Number Type" field="electricAccountType" formData={formData} setFormData={setFormData} />
-            </div>
-            <div className="grid-2">
-              <TextField label="Electric Account Number" field="electricAccountNumber" formData={formData} setFormData={setFormData} />
-              <TextField label="Electric Rates" field="electricRate" formData={formData} setFormData={setFormData} />
+            <div className="sale-form-section-title">Sale Type</div>
+            <div className="form-group">
+              <label className="form-label">Sale Type *</label>
+              <select
+                className="form-select"
+                aria-label="Sale Type"
+                value={formData.saleType}
+                onChange={(e) => handleSaleTypeChange(e.target.value)}
+                required
+              >
+                <option value="Electric">Electric</option>
+                <option value="Gas">Gas</option>
+                <option value="Electric and Gas">Electric and Gas</option>
+              </select>
             </div>
 
-            <div className="sale-form-section-title">Gas</div>
-            <div className="grid-2">
-              <TextField label="Gas Utility" field="gasUtility" formData={formData} setFormData={setFormData} />
-              <TextField label="Gas Account Number Type" field="gasAccountType" formData={formData} setFormData={setFormData} />
-            </div>
-            <TextField label="Gas Account Number" field="gasAccountNumber" formData={formData} setFormData={setFormData} />
+            {(formData.saleType === 'Electric' || formData.saleType === 'Electric and Gas') && (
+              <>
+                <div className="sale-form-section-title">Electric</div>
+                <div className="grid-2">
+                  <TextField label="Electric Utility" field="electricUtility" formData={formData} setFormData={setFormData} />
+                  <TextField label="Electric Account Number Type" field="electricAccountType" formData={formData} setFormData={setFormData} />
+                </div>
+                <div className="grid-2">
+                  <TextField label="Electric Account Number" field="electricAccountNumber" formData={formData} setFormData={setFormData} />
+                  <TextField label="Electric Rates" field="electricRate" formData={formData} setFormData={setFormData} />
+                </div>
+              </>
+            )}
+
+            {(formData.saleType === 'Gas' || formData.saleType === 'Electric and Gas') && (
+              <>
+                <div className="sale-form-section-title">Gas</div>
+                <div className="grid-2">
+                  <TextField label="Gas Utility" field="gasUtility" formData={formData} setFormData={setFormData} />
+                  <TextField label="Gas Account Number Type" field="gasAccountType" formData={formData} setFormData={setFormData} />
+                </div>
+                <TextField label="Gas Account Number" field="gasAccountNumber" formData={formData} setFormData={setFormData} />
+              </>
+            )}
 
             <div className="form-group">
               <label className="form-label">Notes</label>

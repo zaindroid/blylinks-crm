@@ -96,12 +96,12 @@ describe('AdminOverview combined (not campaign-scoped) totals', () => {
     expect(card).toHaveTextContent('3 submitted today');
   });
 
-  it('counts a sale with both electric AND gas account info as 2 sales, for Total Sales and Approval Rate alike', () => {
+  it('counts an "Electric and Gas" Sale Type as 2 sales, for Total Sales and Approval Rate alike', () => {
     setup({
       sales: [
-        sale({ id: 'S1', status: 'Approved', electricAccountNumber: 'EL-1' }), // electric only -> 1
-        sale({ id: 'S2', status: 'Approved', gasAccountNumber: 'GAS-1' }), // gas only -> 1
-        sale({ id: 'S3', status: 'Approved', electricAccountNumber: 'EL-2', gasAccountNumber: 'GAS-2' }) // both -> 2
+        sale({ id: 'S1', status: 'Approved', saleType: 'Electric' }), // 1
+        sale({ id: 'S2', status: 'Approved', saleType: 'Gas' }), // 1
+        sale({ id: 'S3', status: 'Approved', saleType: 'Electric and Gas' }) // 2
       ]
     });
 
@@ -113,11 +113,11 @@ describe('AdminOverview combined (not campaign-scoped) totals', () => {
     expect(approvalCard).toHaveTextContent('4 of 4 Approved');
   });
 
-  it('"Sales Today by Campaign" counts a dual electric+gas sale as 2, not 1', () => {
+  it('"Sales Today by Campaign" counts an "Electric and Gas" sale as 2, not 1', () => {
     const today = new Date().toISOString();
     setup({
       sales: [
-        sale({ id: 'S1', campaignId: 'camp_solar', status: 'Approved', saleDateIso: today, electricAccountNumber: 'EL-1', gasAccountNumber: 'GAS-1' })
+        sale({ id: 'S1', campaignId: 'camp_solar', status: 'Approved', saleDateIso: today, saleType: 'Electric and Gas' })
       ]
     });
     const card = screen.getByText('Sales Today by Campaign').closest('.card');

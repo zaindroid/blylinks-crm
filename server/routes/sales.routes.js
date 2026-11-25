@@ -31,8 +31,14 @@ const ORDER_DETAIL_FIELDS = [
   ['gasAccountType', 'gas_account_type'],
   ['gasAccountNumber', 'gas_account_number'],
   ['confirmationNumber', 'confirmation_number'],
-  ['closerName', 'closer_name']
+  ['closerName', 'closer_name'],
+  ['saleType', 'sale_type']
 ];
+
+// The agent's explicit "Electric" / "Gas" / "Electric and Gas" choice on the order form -- the one
+// source of truth for how many sales a submission counts as (2 for "Electric and Gas", 1 for
+// either service alone), used by the leaderboard and campaign sales-count queries below.
+const SALE_TYPES = ['Electric', 'Gas', 'Electric and Gas'];
 
 function reshapeSale(row) {
   const shaped = {
@@ -63,21 +69,21 @@ function reshapeSale(row) {
 // safe to show org-wide as a friendly leaderboard. Ranked by number of sales SUBMITTED (every
 // status counts -- Pending/Approved/Rejected alike; this measures submission activity, not
 // closed deals), for this calendar month; all-time count and approved revenue ride along as
-// context only, never as the ranking itself. A sale with both an electric AND a gas account
-// number is two utility enrollments in one submission, so it counts as 2 sales, not 1; the
+// context only, never as the ranking itself. A sale whose agent-picked Sale Type is "Electric and
+// Gas" is two utility enrollments in one submission, so it counts as 2 sales, not 1; the
 // "WHEN s.id IS NULL THEN 0" guard keeps an agent with zero sales at 0 rather than 1, since the
-// LEFT JOIN otherwise leaves every column on that row (including the account numbers) NULL.
+// LEFT JOIN otherwise leaves every column on that row (including sale_type) NULL.
 router.get('/leaderboard', asyncHandler(async (req, res) => {
   const { rows } = await pool.query(`
     SELECT u.id AS agent_id, u.name AS agent_name,
       COALESCE(SUM(CASE
         WHEN s.id IS NULL THEN 0
-        WHEN COALESCE(trim(s.electric_account_number), '') <> '' AND COALESCE(trim(s.gas_account_number), '') <> '' THEN 2
+        WHEN s.sale_type = 'Electric and Gas' THEN 2
         ELSE 1
       END), 0) AS submitted_count,
       COALESCE(SUM(CASE
         WHEN s.id IS NULL THEN 0
-        WHEN COALESCE(trim(s.electric_account_number), '') <> '' AND COALESCE(trim(s.gas_account_number), '') <> '' THEN 2
+        WHEN s.sale_type = 'Electric and Gas' THEN 2
         ELSE 1
       END) FILTER (
         WHERE date_trunc('month', s.sale_date AT TIME ZONE 'Asia/Karachi') = date_trunc('month', now() AT TIME ZONE 'Asia/Karachi')
@@ -142,6 +148,9 @@ router.post('/', asyncHandler(async (req, res) => {
   const saleAmount = amount === undefined || amount === null || amount === '' ? 0 : Number(amount);
   if (!Number.isFinite(saleAmount) || saleAmount < 0) {
     return res.status(400).json({ error: 'amount must be a non-negative number' });
+  }
+  if (req.body.saleType && !SALE_TYPES.includes(req.body.saleType)) {
+    return res.status(400).json({ error: `saleType must be one of ${SALE_TYPES.join(', ')}` });
   }
   const id = `SALE-${Math.floor(1000 + Math.random() * 9000)}`;
   const detailValues = ORDER_DETAIL_FIELDS.map(([jsonKey]) => req.body[jsonKey] || null);
@@ -261,6 +270,10 @@ router.patch('/:id', requireRole('Admin'), asyncHandler(async (req, res) => {
       return res.status(400).json({ error: 'amount must be a non-negative number' });
     }
     setField('amount', parsedAmount);
+  }
+
+  if (req.body.saleType && !SALE_TYPES.includes(req.body.saleType)) {
+    return res.status(400).json({ error: `saleType must be one of ${SALE_TYPES.join(', ')}` });
   }
 
   for (const [jsonKey, column] of ORDER_DETAIL_FIELDS) {

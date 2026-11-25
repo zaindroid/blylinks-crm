@@ -4,6 +4,17 @@ import { DATE_RANGE_PRESETS, filterByDateRange } from '../../utils/dateFilters';
 import SaleDetailModal from '../Shared/SaleDetailModal';
 import SaleEditModal from '../Shared/SaleEditModal';
 
+// Which utility name to show in the list row depends on the Sale Type the agent picked: for a
+// dual Electric-and-Gas sale, both utility names matter, so both are shown.
+function utilityNameFor(sale) {
+  if (sale.saleType === 'Gas') return sale.gasUtility || '—';
+  if (sale.saleType === 'Electric and Gas') {
+    const parts = [sale.electricUtility, sale.gasUtility].filter(Boolean);
+    return parts.length ? parts.join(' / ') : '—';
+  }
+  return sale.electricUtility || '—';
+}
+
 export default function QASalesApproval({ sales, currentUser, onApproveSale, onRejectSale, onUpdateSale }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('Pending');
@@ -137,11 +148,15 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
           <thead>
             <tr>
               <th>Sale ID</th>
+              <th>Date</th>
               <th>Agent Name</th>
               <th>Customer Name</th>
+              <th>Phone</th>
+              <th>State</th>
               <th>Campaign</th>
+              <th>Sale Type</th>
+              <th>Utility</th>
               <th>Amount ($)</th>
-              <th>Date</th>
               <th>Status</th>
               <th>Details</th>
               <th>Review Actions</th>
@@ -150,17 +165,21 @@ export default function QASalesApproval({ sales, currentUser, onApproveSale, onR
           <tbody>
             {filteredSales.length === 0 ? (
               <tr>
-                <td colSpan="9" style={{ textAlign: 'center', padding: '2rem' }}>No orders found matching criteria.</td>
+                <td colSpan="13" style={{ textAlign: 'center', padding: '2rem' }}>No orders found matching criteria.</td>
               </tr>
             ) : (
               filteredSales.map(sale => (
                 <tr key={sale.id}>
                   <td className="font-mono">{sale.id}</td>
-                  <td className="font-bold">{sale.agentName}</td>
-                  <td>{sale.customerName} <span className="text-subtle text-sm">({sale.phone})</span></td>
-                  <td>{sale.projectName}</td>
-                  <td className="font-mono text-cyan">${sale.amount.toLocaleString()}</td>
                   <td className="text-muted">{sale.date}</td>
+                  <td className="font-bold">{sale.agentName}</td>
+                  <td>{sale.customerName}</td>
+                  <td className="text-muted">{sale.phone}</td>
+                  <td className="text-muted">{sale.state || '—'}</td>
+                  <td>{sale.projectName}</td>
+                  <td className="text-muted">{sale.saleType || '—'}</td>
+                  <td className="text-muted">{utilityNameFor(sale)}</td>
+                  <td className="font-mono text-cyan">${sale.amount.toLocaleString()}</td>
                   <td>
                     <span className={`badge ${
                       sale.status === 'Approved' ? 'badge-success' :
